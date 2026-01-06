@@ -4,7 +4,7 @@
 <br>
 <img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/Nicxe/homeassistant-trafikinfo-se">
 
-
+## Overview
 Retrieve trafic information for Swedish roads from [Trafikverket](https://www.trafikverket.se/) to Home Assistant
 
 There is also a dashboard card specifically for this integration, which can be found here: [Trafikinfo SE - Alert Card](https://github.com/Nicxe/homeassistant-trafikinfo-se-card)
