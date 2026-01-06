@@ -1,6 +1,14 @@
 # Trafikinfo SE
+[![Buy me a Coffee](https://img.shields.io/badge/Support-Buy%20me%20a%20coffee-fdd734?logo=buy-me-a-coffee)](ttps://www.buymeacoffee.com/NiklasV) [![Last commit](https://img.shields.io/github/last-commit/Nicxe/homeassistant-trafikinfo-se)](#) [![Version](https://img.shields.io/github/v/release/Nicxe/homeassistant-trafikinfo-se)](#) <br>
+![GitHub Downloads (all assets, latest release)](https://img.shields.io/github/downloads/nicxe/homeassistant-trafikinfo-se/latest/total)
+<br>
+<img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/Nicxe/homeassistant-trafikinfo-se">
+
 
 Retrieve trafic information for Swedish roads from [Trafikverket](https://www.trafikverket.se/) to Home Assistant
+
+There is also a dashboard card specifically for this integration, which can be found here: [Trafikinfo SE - Alert Card](https://github.com/Nicxe/homeassistant-trafikinfo-se-card)
+
 
 ## Prerequisites
 Please click [here](https://data.trafikverket.se/home) and register to obtain the API key.
@@ -55,12 +63,20 @@ If the button above does not work, you can also perform the following steps manu
 * Stay ahead of roadworks and major traffic disruptions, and adjust plans before you leave home.
 * Create simple dashboards and status indicators that summarize current traffic conditions in your area at a glance.
 
-### Entities provided by the integration 
+## Entities provided by the integration 
 * Olyckor
 * Hinder
 * Viktig trafikinformation
 * Restrektioner
 * Trafikmeddelande
 * Vägarbete
+
+## Usage Screenshots
+
+Using the [Trafikifo SE - Alert Card](https://github.com/Nicxe/homeassistant-trafikinfo-se-card)
+
+
+<img width="1157" height="587" alt="trafikinfo-se-alert-card" src="https://github.com/user-attachments/assets/af609e0f-ca1e-4445-bb04-9cf681b1f0fb" />
+
 
 
