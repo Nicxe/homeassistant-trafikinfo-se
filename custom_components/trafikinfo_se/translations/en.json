@@ -1,0 +1,46 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Trafikinfo SE",
+        "description": "Add your Trafikverket API key.",
+        "data": {
+          "api_key": "API key"
+        }
+      },
+      "options": {
+        "title": "Trafikinfo SE",
+        "description": "Select which categories to create sensors for and configure update interval.",
+        "data": {
+          "location": "Center position",
+          "radius_km": "Radius (km)",
+          "scan_interval": "Update interval (minutes)",
+          "max_items": "Max items in attributes",
+          "message_types": "Message types (categories)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect.",
+      "invalid_auth": "Invalid API key.",
+      "unknown": "Unexpected error."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Trafikinfo SE options",
+        "description": "Configure polling interval, which message types to create sensors for, and how many items to expose in attributes.",
+        "data": {
+          "location": "Center position",
+          "radius_km": "Radius (km)",
+          "scan_interval": "Update interval (minutes)",
+          "max_items": "Max items in attributes",
+          "message_types": "Message types (categories)"
+        }
+      }
+    }
+  }
+}
+
+

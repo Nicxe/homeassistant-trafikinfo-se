@@ -1,0 +1,122 @@
+"""The Trafikinfo SE integration."""
+
+from __future__ import annotations
+
+import logging
+from time import monotonic
+
+import homeassistant.helpers.config_validation as cv
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
+
+from homeassistant.helpers import entity_registry as er
+
+from .const import CONF_MESSAGE_TYPES, DEFAULT_MESSAGE_TYPES, DOMAIN
+from .coordinator import TrafikinfoCoordinator
+
+_LOGGER = logging.getLogger(__name__)
+
+PLATFORMS: list[str] = ["sensor"]
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Set up the integration (YAML is not supported)."""
+    hass.data.setdefault(DOMAIN, {})
+    return True
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up Trafikinfo SE from a config entry."""
+    hass.data.setdefault(DOMAIN, {})
+
+    coordinator = TrafikinfoCoordinator(hass, entry)
+    try:
+        start = monotonic()
+        _LOGGER.debug(
+            "Starting coordinator first refresh (entry_id=%s, name=%s)",
+            entry.entry_id,
+            entry.title,
+        )
+        await coordinator.async_config_entry_first_refresh()
+        _LOGGER.debug(
+            "Coordinator first refresh done in %.3fs (entry_id=%s)",
+            monotonic() - start,
+            entry.entry_id,
+        )
+    except Exception as ex:
+        _LOGGER.debug(
+            "Coordinator first refresh failed after %.3fs (entry_id=%s): %s",
+            monotonic() - start,
+            entry.entry_id,
+            ex,
+        )
+        raise ConfigEntryNotReady from ex
+
+    hass.data[DOMAIN][entry.entry_id] = {"coordinator": coordinator}
+
+    async def _options_updated(hass: HomeAssistant, updated_entry: ConfigEntry) -> None:
+        # Options can affect entity creation (enabled message types), so reload entry.
+        await hass.config_entries.async_reload(updated_entry.entry_id)
+
+    entry.async_on_unload(entry.add_update_listener(_options_updated))
+
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    return True
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry."""
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload_ok:
+        hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
+    return unload_ok
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate old config entries."""
+    if entry.version >= 3:
+        return True
+
+    _LOGGER.debug("Migrating config entry %s from version %s", entry.entry_id, entry.version)
+
+    new_data = dict(entry.data)
+    new_options = dict(entry.options)
+
+    if entry.version < 2:
+        # v2: Remove the "Färjor" sensor/category (exists natively in HA) and clean up
+        # any stale options/data pointing to it.
+        def _strip_farjor(val: object) -> list[str] | None:
+            if not isinstance(val, list):
+                return None
+            out = [x for x in val if isinstance(x, str) and x != "Färjor"]
+            return out
+
+        data_types = _strip_farjor(new_data.get(CONF_MESSAGE_TYPES))
+        if data_types is not None:
+            new_data[CONF_MESSAGE_TYPES] = data_types or list(DEFAULT_MESSAGE_TYPES)
+
+        opt_types = _strip_farjor(new_options.get(CONF_MESSAGE_TYPES))
+        if opt_types is not None:
+            new_options[CONF_MESSAGE_TYPES] = opt_types or list(DEFAULT_MESSAGE_TYPES)
+
+        # Remove the old entity from the entity registry so it doesn't linger as an orphan.
+        # Unique id format (see sensor.py): "{entry_id}_message_type_{slugify(message_type)}"
+        target_unique_id = f"{entry.entry_id}_message_type_farjor"
+        ent_reg = er.async_get(hass)
+        for ent in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
+            if ent.unique_id == target_unique_id:
+                ent_reg.async_remove(ent.entity_id)
+
+    if entry.version < 3:
+        # v3: Remove deprecated option; we always use MDI icons as the primary display.
+        new_data.pop("use_entity_pictures", None)
+        new_options.pop("use_entity_pictures", None)
+
+    hass.config_entries.async_update_entry(entry, data=new_data, options=new_options, version=3)
+    _LOGGER.debug("Migration to version 3 successful for %s", entry.entry_id)
+    return True
+
+
