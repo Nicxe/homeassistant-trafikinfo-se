@@ -9,6 +9,7 @@ import homeassistant.helpers.config_validation as cv
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.util import slugify
 
 from homeassistant.helpers import entity_registry as er
 
@@ -77,7 +78,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Migrate old config entries."""
-    if entry.version >= 3:
+    if entry.version >= 4:
         return True
 
     _LOGGER.debug("Migrating config entry %s from version %s", entry.entry_id, entry.version)
@@ -115,8 +116,58 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         new_data.pop("use_entity_pictures", None)
         new_options.pop("use_entity_pictures", None)
 
-    hass.config_entries.async_update_entry(entry, data=new_data, options=new_options, version=3)
-    _LOGGER.debug("Migration to version 3 successful for %s", entry.entry_id)
+    if entry.version < 4:
+        # v4: Rename entities to sensor.trafikinfo_se_<message_type> where safe.
+        ent_reg = er.async_get(hass)
+
+        display_name_map = {
+            "Restriktion": "Restriktioner",
+        }
+
+        def _internal_type_from_unique_id(unique_id: str) -> str | None:
+            prefix = f"{entry.entry_id}_message_type_"
+            if not unique_id.startswith(prefix):
+                return None
+            slug = unique_id[len(prefix) :]
+            for t in DEFAULT_MESSAGE_TYPES:
+                if slugify(t) == slug:
+                    return t
+            return None
+
+        for ent in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
+            internal = _internal_type_from_unique_id(ent.unique_id)
+            if not internal:
+                continue
+            display = display_name_map.get(internal, internal)
+
+            desired_entity_id = f"sensor.{DOMAIN}_{slugify(display)}"
+            if ent.entity_id == desired_entity_id:
+                continue
+
+            # Only rename if it looks like the entity id was auto-generated previously.
+            possible_old_ids = {
+                f"sensor.{slugify(internal)}",
+                f"sensor.{slugify(display)}",
+            }
+            if ent.entity_id not in possible_old_ids:
+                continue
+
+            # Don't rename into an existing entity id (avoid collisions).
+            if ent_reg.async_get(desired_entity_id) is not None:
+                continue
+
+            try:
+                ent_reg.async_update_entity(ent.entity_id, new_entity_id=desired_entity_id)
+            except Exception as err:
+                _LOGGER.debug(
+                    "Failed renaming %s -> %s: %s",
+                    ent.entity_id,
+                    desired_entity_id,
+                    err,
+                )
+
+    hass.config_entries.async_update_entry(entry, data=new_data, options=new_options, version=4)
+    _LOGGER.debug("Migration to version 4 successful for %s", entry.entry_id)
     return True
 
 

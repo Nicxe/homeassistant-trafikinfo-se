@@ -114,7 +114,7 @@ async def _async_test_api_key(hass: HomeAssistant, api_key: str) -> _TestResult:
 class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Trafikinfo SE."""
 
-    VERSION = 3
+    VERSION = 4
 
     def __init__(self) -> None:
         self._api_key: str | None = None
