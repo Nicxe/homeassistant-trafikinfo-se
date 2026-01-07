@@ -190,6 +190,12 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
         self._attr_icon = MESSAGE_TYPE_ICONS.get(message_type, "mdi:traffic-cone")
 
     @property
+    def suggested_object_id(self) -> str | None:
+        """Suggest entity_id as sensor.trafikinfo_se_<name> on first creation."""
+        name = self._attr_name or self._message_type
+        return f"{DOMAIN}_{slugify(name)}"
+
+    @property
     def device_info(self) -> DeviceInfo:
         return DeviceInfo(
             identifiers={(DOMAIN, self._entry.entry_id)},
