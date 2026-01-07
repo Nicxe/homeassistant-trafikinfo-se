@@ -73,8 +73,10 @@ If the button above does not work, you can also perform the following steps manu
 
 ## Usage Screenshots
 
+
 Using the [Trafikifo SE - Alert Card](https://github.com/Nicxe/homeassistant-trafikinfo-se-card)
 
+<img width="614" height="651" alt="CleanShot 2026-01-07 at 19 21 05" src="https://github.com/user-attachments/assets/b48598dd-d136-4c77-851f-8e4dea6f86df" />
 
 <img width="1157" height="587" alt="trafikinfo-se-alert-card" src="https://github.com/user-attachments/assets/af609e0f-ca1e-4445-bb04-9cf681b1f0fb" />
 
