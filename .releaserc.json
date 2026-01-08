@@ -24,9 +24,15 @@
             { "type": "docs", "section": "📚 Documentation" },
             { "type": "refactor", "section": "🧹 Refactoring" },
             { "type": "chore", "section": "🔧 Maintenance" },
-            { "type": "*", "section": "📦 Övrigt" }
+            { "type": "*", "section": "📦 Other changes" }
           ]
         }
+      }
+    ],
+    [
+      "@semantic-release/exec",
+      {
+        "prepareCmd": "jq '.version = \"${nextRelease.version}\"' custom_components/trafikinfo_se/manifest.json > manifest.tmp && mv manifest.tmp custom_components/trafikinfo_se/manifest.json"
       }
     ],
     [
@@ -36,4 +42,4 @@
       }
     ]
   ]
-}
+}v
