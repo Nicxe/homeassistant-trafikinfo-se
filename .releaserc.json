@@ -32,14 +32,20 @@
     [
       "@semantic-release/exec",
       {
-        "prepareCmd": "jq '.version = \"${nextRelease.version}\"' custom_components/trafikinfo_se/manifest.json > manifest.tmp && mv manifest.tmp custom_components/trafikinfo_se/manifest.json"
+        "prepareCmd": "jq '.version = \"${nextRelease.version}\"' custom_components/trafikinfo_se/manifest.json > manifest.tmp && mv manifest.tmp custom_components/trafikinfo_se/manifest.json && cd custom_components && zip -r trafikinfo_se.zip trafikinfo_se"
       }
     ],
     [
       "@semantic-release/github",
       {
-        "draft": true
+        "draft": true,
+        "assets": [
+          {
+            "path": "custom_components/trafikinfo_se.zip",
+            "label": "trafikinfo_se.zip"
+          }
+        ]
       }
     ]
   ]
-}v
+}
