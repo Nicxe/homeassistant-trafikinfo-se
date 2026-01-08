@@ -42,7 +42,8 @@ module.exports = {
         ],
         draftRelease: true,
         draft: true,
-        prerelease: false
+        prerelease: false,
+        commentOnSuccess: false
       }
     ]
   ]
