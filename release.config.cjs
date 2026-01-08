@@ -21,9 +21,7 @@ module.exports = {
       "@semantic-release/release-notes-generator",
       {
         preset: "conventionalcommits",
-        writerOpts: {
-          mainTemplate
-        }
+        writerOpts: { mainTemplate }
       }
     ],
     [
@@ -36,13 +34,15 @@ module.exports = {
     [
       "@semantic-release/github",
       {
-        draft: true,
         assets: [
           {
             path: "custom_components/trafikinfo_se.zip",
             label: "trafikinfo_se.zip"
           }
-        ]
+        ],
+        draftRelease: true,
+        draft: true,
+        prerelease: false
       }
     ]
   ]
