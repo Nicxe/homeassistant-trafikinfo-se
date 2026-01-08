@@ -1,7 +1,6 @@
 # Trafikinfo SE
-[![Buy me a Coffee](https://img.shields.io/badge/Support-Buy%20me%20a%20coffee-fdd734?logo=buy-me-a-coffee)](https://www.buymeacoffee.com/NiklasV) [![Last commit](https://img.shields.io/github/last-commit/Nicxe/homeassistant-trafikinfo-se)](#) [![Version](https://img.shields.io/github/v/release/Nicxe/homeassistant-trafikinfo-se)](#) <br>
-![GitHub Downloads (all assets, latest release)](https://img.shields.io/github/downloads/nicxe/homeassistant-trafikinfo-se/latest/total)
-<br>
+[![Buy me a Coffee](https://img.shields.io/badge/Support-Buy%20me%20a%20coffee-fdd734?logo=buy-me-a-coffee)](https://www.buymeacoffee.com/NiklasV)
+[![Last commit](https://img.shields.io/github/last-commit/Nicxe/homeassistant-trafikinfo-se)](#) [![Version](https://img.shields.io/github/v/release/Nicxe/homeassistant-trafikinfo-se)](#) ![GitHub Downloads (all assets, latest release)](https://img.shields.io/github/downloads/nicxe/homeassistant-trafikinfo-se/latest/total)
 <img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/Nicxe/homeassistant-trafikinfo-se">
 
 ## Overview
