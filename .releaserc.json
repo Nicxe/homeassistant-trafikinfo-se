@@ -16,17 +16,6 @@
     [
       "@semantic-release/release-notes-generator",
       {
-        "preset": "conventionalcommits",
-        "presetConfig": {
-          "types": [
-            { "type": "feat", "section": "✨ New features" },
-            { "type": "fix", "section": "🐛 Bug fixes" },
-            { "type": "docs", "section": "📚 Documentation" },
-            { "type": "refactor", "section": "🧹 Refactoring" },
-            { "type": "chore", "section": "🔧 Maintenance" },
-            { "type": "*", "section": "📦 Other changes" }
-          ]
-        },
         "writerOpts": {
           "template": "./.release/release-notes.hbs.js"
         }
@@ -42,7 +31,6 @@
       "@semantic-release/github",
       {
         "draft": true,
-        "prerelease": true,
         "assets": [
           {
             "path": "custom_components/trafikinfo_se.zip",
