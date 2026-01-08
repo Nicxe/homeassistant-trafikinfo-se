@@ -26,6 +26,9 @@
             { "type": "chore", "section": "🔧 Maintenance" },
             { "type": "*", "section": "📦 Other changes" }
           ]
+        },
+        "writerOpts": {
+          "template": "./.release/release-notes.hbs.js"
         }
       }
     ],
@@ -39,6 +42,7 @@
       "@semantic-release/github",
       {
         "draft": true,
+        "prerelease": true,
         "assets": [
           {
             "path": "custom_components/trafikinfo_se.zip",
