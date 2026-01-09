@@ -22,15 +22,21 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_API_KEY,
+    CONF_COUNTIES,
+    CONF_FILTER_MODE,
     CONF_LATITUDE,
     CONF_LONGITUDE,
     CONF_MAX_ITEMS,
     CONF_RADIUS_KM,
     CONF_SCAN_INTERVAL,
+    COUNTY_ALL,
     DEFAULT_RADIUS_KM,
+    DEFAULT_FILTER_MODE,
     DEFAULT_MAX_ITEMS,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    FILTER_MODE_COORDINATE,
+    FILTER_MODE_COUNTY,
     SITUATION_SCHEMA_VERSION,
     TRAFIKVERKET_DATACACHE_URL,
     TRAFIKVERKET_ICONS_BASE_URL,
@@ -369,6 +375,19 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
         self._max_items = int(
             entry.options.get(CONF_MAX_ITEMS, entry.data.get(CONF_MAX_ITEMS, DEFAULT_MAX_ITEMS))
         )
+        self._filter_mode = str(
+            entry.options.get(CONF_FILTER_MODE, entry.data.get(CONF_FILTER_MODE, DEFAULT_FILTER_MODE))
+        )
+        if self._filter_mode not in (FILTER_MODE_COORDINATE, FILTER_MODE_COUNTY):
+            # Backward compatibility for earlier values (e.g. "sweden") or unknown values.
+            self._filter_mode = FILTER_MODE_COUNTY
+        self._counties: set[str] = set()
+        raw_counties = entry.options.get(CONF_COUNTIES, entry.data.get(CONF_COUNTIES, []))
+        if isinstance(raw_counties, list):
+            self._counties = {str(x) for x in raw_counties if str(x).strip()}
+        # If mode is county but counties is empty, default to Sweden-wide.
+        if self._filter_mode == FILTER_MODE_COUNTY and not self._counties:
+            self._counties = {COUNTY_ALL}
         self._latitude = float(
             entry.options.get(CONF_LATITUDE, entry.data.get(CONF_LATITUDE, hass.config.latitude))
         )
@@ -400,6 +419,15 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
         return self._api_key
 
     @property
+    def filter_mode(self) -> str:
+        return self._filter_mode
+
+    @property
+    def counties(self) -> list[str]:
+        # Stable ordering for UI/attributes
+        return sorted(self._counties)
+
+    @property
     def max_items(self) -> int:
         return self._max_items
 
@@ -417,6 +445,21 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
 
     def apply_options(self) -> None:
         """Apply updated options from the config entry."""
+        self._filter_mode = str(
+            self._entry.options.get(
+                CONF_FILTER_MODE,
+                self._entry.data.get(CONF_FILTER_MODE, DEFAULT_FILTER_MODE),
+            )
+        )
+        if self._filter_mode not in (FILTER_MODE_COORDINATE, FILTER_MODE_COUNTY):
+            self._filter_mode = FILTER_MODE_COUNTY
+        self._counties = set()
+        raw_counties = self._entry.options.get(CONF_COUNTIES, self._entry.data.get(CONF_COUNTIES, []))
+        if isinstance(raw_counties, list):
+            self._counties = {str(x) for x in raw_counties if str(x).strip()}
+        if self._filter_mode == FILTER_MODE_COUNTY and not self._counties:
+            self._counties = {COUNTY_ALL}
+
         scan_minutes = int(
             self._entry.options.get(
                 CONF_SCAN_INTERVAL,
@@ -447,6 +490,30 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
                 CONF_RADIUS_KM, self._entry.data.get(CONF_RADIUS_KM, DEFAULT_RADIUS_KM)
             )
         )
+
+    def _is_important_without_geo(self, event: TrafikinfoEvent) -> bool:
+        if event.safety_related_message is True:
+            return True
+        if event.message_type == "Viktig trafikinformation":
+            return True
+        return False
+
+    def _in_counties(self, event: TrafikinfoEvent) -> bool:
+        if COUNTY_ALL in self._counties:
+            return True
+        if not self._counties:
+            return False
+        if not event.county_no:
+            return self._is_important_without_geo(event)
+        for c in event.county_no:
+            if str(c) in self._counties:
+                return True
+        return False
+
+    def _include_event(self, event: TrafikinfoEvent) -> bool:
+        if self._filter_mode == FILTER_MODE_COUNTY:
+            return self._in_counties(event)
+        return self._in_radius(event)
 
     def get_local_icon_url(self, icon_id: str | None) -> str | None:
         if not icon_id:
@@ -608,11 +675,7 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
     def _in_radius(self, event: TrafikinfoEvent) -> bool:
         # Include important unlocated messages (often national) to avoid missing safety info.
         if not event.geometry_wgs84:
-            if event.safety_related_message is True:
-                return True
-            if event.message_type == "Viktig trafikinformation":
-                return True
-            return False
+            return self._is_important_without_geo(event)
 
         pts = self._wkt_points(event.geometry_wgs84)
         if not pts:
@@ -652,7 +715,7 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
             raise UpdateFailed(f"Error fetching Trafikverket data: {err}") from err
 
         data = _parse_response(text)
-        filtered = [e for e in data.events if self._in_radius(e)]
+        filtered = [e for e in data.events if self._include_event(e)]
         # Best-effort local icon caching for picture cards
         icon_ids = [e.icon_id for e in filtered if e.icon_id]
         try:
@@ -661,10 +724,12 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
         except Exception as err:
             _LOGGER.debug("Icon caching failed: %s", err)
         _LOGGER.debug(
-            "Geo filter: center=(%.5f,%.5f) radius_km=%.1f events_before=%s events_after=%s",
+            "Filter: mode=%s center=(%.5f,%.5f) radius_km=%.1f counties=%s events_before=%s events_after=%s",
+            self._filter_mode,
             self._latitude,
             self._longitude,
             self._radius_km,
+            sorted(self._counties),
             len(data.events),
             len(filtered),
         )

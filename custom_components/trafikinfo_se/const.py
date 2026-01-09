@@ -15,9 +15,20 @@ CONF_LATITUDE = "latitude"
 CONF_LONGITUDE = "longitude"
 CONF_RADIUS_KM = "radius_km"
 
+# Filtering
+CONF_FILTER_MODE = "filter_mode"
+CONF_COUNTIES = "counties"
+COUNTY_ALL = "all"
+
+FILTER_MODE_COORDINATE = "coordinate"
+FILTER_MODE_COUNTY = "county"
+FILTER_MODE_SWEDEN = "sweden"
+
 DEFAULT_SCAN_INTERVAL = timedelta(minutes=10)
 DEFAULT_MAX_ITEMS = 25
 DEFAULT_RADIUS_KM = 25.0
+DEFAULT_FILTER_MODE = FILTER_MODE_COORDINATE
+DEFAULT_COUNTIES: list[str] = [COUNTY_ALL]
 
 DEFAULT_MESSAGE_TYPES: list[str] = [
     "Viktig trafikinformation",
@@ -41,5 +52,31 @@ TRAFIKVERKET_ICON_V2_URL_PREFIX = (
 ICON_CACHE_DIR = "trafikinfo_se/icons"
 
 ATTRIBUTION = "Data provided by Trafikverket (Trafikinfo)."
+
+# Swedish counties (län) using standard county codes.
+# Trafikverket exposes affected counties per deviation as `CountyNo`.
+COUNTIES: dict[str, str] = {
+    "1": "Stockholms län",
+    "3": "Uppsala län",
+    "4": "Södermanlands län",
+    "5": "Östergötlands län",
+    "6": "Jönköpings län",
+    "7": "Kronobergs län",
+    "8": "Kalmar län",
+    "9": "Gotlands län",
+    "10": "Blekinge län",
+    "12": "Skåne län",
+    "13": "Hallands län",
+    "14": "Västra Götalands län",
+    "17": "Värmlands län",
+    "18": "Örebro län",
+    "19": "Västmanlands län",
+    "20": "Dalarnas län",
+    "21": "Gävleborgs län",
+    "22": "Västernorrlands län",
+    "23": "Jämtlands län",
+    "24": "Västerbottens län",
+    "25": "Norrbottens län",
+}
 
 

@@ -250,11 +250,17 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
         attrs.update(
             {
                 "message_type": self._message_type,
+                "filter_mode": getattr(self.coordinator, "filter_mode", None),
+                "filter_counties": getattr(self.coordinator, "counties", None),
                 "filter_center": {
                     "latitude": getattr(self.coordinator, "latitude", None),
                     "longitude": getattr(self.coordinator, "longitude", None),
-                },
-                "filter_radius_km": getattr(self.coordinator, "radius_km", None),
+                }
+                if getattr(self.coordinator, "filter_mode", None) == "coordinate"
+                else None,
+                "filter_radius_km": getattr(self.coordinator, "radius_km", None)
+                if getattr(self.coordinator, "filter_mode", None) == "coordinate"
+                else None,
                 "entity_picture": entity_picture_attr,
                 "icon_url": picture_url,
                 "events": events,

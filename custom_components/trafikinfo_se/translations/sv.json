@@ -8,13 +8,61 @@
           "api_key": "API-nyckel"
         }
       },
-      "options": {
+      "filter_mode": {
         "title": "Trafikinfo SE",
-        "description": "Välj vilka kategorier som ska få sensorer och ställ in uppdateringsintervall.",
+        "description": "Välj hur du vill filtrera trafikinformation.",
         "data": {
-          "name": "Namn",
+          "filter_mode": "Filterläge"
+        }
+      },
+      "configure_coordinate": {
+        "title": "Trafikinfo SE",
+        "description": "Filtrera händelser inom en radie runt en koordinat.",
+        "data": {
           "location": "Centrumposition",
           "radius_km": "Radie (km)",
+          "name": "Namn",
+          "scan_interval": "Uppdateringsintervall (minuter)",
+          "max_items": "Max antal händelser i attribut",
+          "message_types": "Meddelandetyper (kategorier)"
+        }
+      },
+      "configure_counties": {
+        "title": "Trafikinfo SE",
+        "description": "Filtrera händelser på ett eller flera län (eller hela Sverige).",
+        "data": {
+          "counties": "Län",
+          "name": "Namn",
+          "scan_interval": "Uppdateringsintervall (minuter)",
+          "max_items": "Max antal händelser i attribut",
+          "message_types": "Meddelandetyper (kategorier)"
+        }
+      },
+      "reconfigure_filter_mode": {
+        "title": "Trafikinfo SE",
+        "description": "Välj hur du vill filtrera trafikinformation.",
+        "data": {
+          "filter_mode": "Filterläge"
+        }
+      },
+      "reconfigure_coordinate": {
+        "title": "Trafikinfo SE",
+        "description": "Uppdatera koordinat- och radiefiltrering.",
+        "data": {
+          "location": "Centrumposition",
+          "radius_km": "Radie (km)",
+          "name": "Namn",
+          "scan_interval": "Uppdateringsintervall (minuter)",
+          "max_items": "Max antal händelser i attribut",
+          "message_types": "Meddelandetyper (kategorier)"
+        }
+      },
+      "reconfigure_counties": {
+        "title": "Trafikinfo SE",
+        "description": "Uppdatera länfiltrering (eller hela Sverige).",
+        "data": {
+          "counties": "Län",
+          "name": "Namn",
           "scan_interval": "Uppdateringsintervall (minuter)",
           "max_items": "Max antal händelser i attribut",
           "message_types": "Meddelandetyper (kategorier)"
@@ -24,6 +72,7 @@
     "error": {
       "cannot_connect": "Kunde inte ansluta.",
       "invalid_auth": "Ogiltig API-nyckel.",
+      "missing_counties": "Välj minst ett län (eller 'Hela Sverige').",
       "unknown": "Oväntat fel."
     }
   },
@@ -31,16 +80,37 @@
     "step": {
       "init": {
         "title": "Trafikinfo SE alternativ",
-        "description": "Ställ in uppdateringsintervall, vilka meddelandetyper som ska ha sensorer, och hur många händelser som visas i attribut.",
+        "description": "Välj hur du vill filtrera trafikinformation.",
         "data": {
-          "name": "Namn",
+          "filter_mode": "Filterläge"
+        }
+      },
+      "coordinate": {
+        "title": "Trafikinfo SE alternativ",
+        "description": "Uppdatera koordinat- och radiefiltrering.",
+        "data": {
           "location": "Centrumposition",
           "radius_km": "Radie (km)",
+          "name": "Namn",
+          "scan_interval": "Uppdateringsintervall (minuter)",
+          "max_items": "Max antal händelser i attribut",
+          "message_types": "Meddelandetyper (kategorier)"
+        }
+      },
+      "counties": {
+        "title": "Trafikinfo SE alternativ",
+        "description": "Uppdatera länfiltrering (eller hela Sverige).",
+        "data": {
+          "counties": "Län",
+          "name": "Namn",
           "scan_interval": "Uppdateringsintervall (minuter)",
           "max_items": "Max antal händelser i attribut",
           "message_types": "Meddelandetyper (kategorier)"
         }
       }
+    },
+    "error": {
+      "missing_counties": "Välj minst ett län (eller 'Hela Sverige')."
     }
   }
 }
