@@ -1,12 +1,6 @@
-## **Trafikinfo SE, v{{version}}**
+## **Trafikinfo SE - v{{version}}**
 
-![GitHub Downloads (all assets, specific tag)](https://img.shields.io/github/downloads/nicxe/homeassistant-trafikinfo-se/{{version}}/total)
-
-{{#if prerelease}}
-⚠️ This is a **beta release** for testing and verification.
-{{else}}
-✅ This is a **stable release** for Home Assistant.
-{{/if}}
+![GitHub Downloads (all assets, specific tag)](https://img.shields.io/github/downloads/nicxe/homeassistant-trafikinfo-se/v{{version}}/total)
 
 ---
 
@@ -14,8 +8,10 @@
 ### {{title}}
 {{#each commits}}
 - {{subject}}
+{{#if bodyIndented}}
+{{bodyIndented}}
+{{/if}}
 {{/each}}
-
 {{/each}}
 
 ---
