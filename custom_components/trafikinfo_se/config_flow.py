@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 import voluptuous as vol
 
 from homeassistant import config_entries
+from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant, callback
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers import aiohttp_client
@@ -142,10 +143,6 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     _LOGGER.exception("Unexpected exception during config: %s", err)
                     errors["base"] = "unknown"
                 else:
-                    # Only allow one entry by default (whole Sweden, single API key).
-                    await self.async_set_unique_id("trafikinfo_se")
-                    self._abort_if_unique_id_configured()
-
                     self._api_key = api_key
                     return await self.async_step_options()
 
@@ -163,6 +160,7 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.async_step_user()
 
         if user_input is not None:
+            name = str(user_input.get(CONF_NAME) or "").strip() or "Trafikinfo SE"
             loc = user_input.get(CONF_LOCATION) or {}
             lat = float(loc.get("latitude", self.hass.config.latitude))
             lon = float(loc.get("longitude", self.hass.config.longitude))
@@ -184,11 +182,12 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_MAX_ITEMS: max_items,
                 CONF_MESSAGE_TYPES: list(msg_types),
             }
-            return self.async_create_entry(title="Trafikinfo SE", data=data)
+            return self.async_create_entry(title=name, data=data)
 
         options = [{"label": s, "value": s} for s in DEFAULT_MESSAGE_TYPES]
         schema = vol.Schema(
             {
+                vol.Optional(CONF_NAME, default="Trafikinfo SE"): str,
                 vol.Optional(
                     CONF_LOCATION,
                     default={
@@ -247,6 +246,10 @@ class TrafikinfoSEOptionsFlowHandler(config_entries.OptionsFlow):
         """Manage the options."""
         if user_input is not None:
             data = dict(self._config_entry.options)
+            name = str(user_input.get(CONF_NAME) or "").strip()
+            if name and name != (self._config_entry.title or ""):
+                # Allow renaming the device/integration instance via options.
+                self.hass.config_entries.async_update_entry(self._config_entry, title=name)
             loc = user_input.get(CONF_LOCATION) or {}
             lat = float(loc.get("latitude", self.hass.config.latitude))
             lon = float(loc.get("longitude", self.hass.config.longitude))
@@ -268,6 +271,7 @@ class TrafikinfoSEOptionsFlowHandler(config_entries.OptionsFlow):
             )
             return self.async_create_entry(title="", data=data)
 
+        default_name = self._config_entry.title or "Trafikinfo SE"
         default_lat = float(
             self._config_entry.options.get(
                 CONF_LATITUDE,
@@ -310,6 +314,7 @@ class TrafikinfoSEOptionsFlowHandler(config_entries.OptionsFlow):
         options = [{"label": s, "value": s} for s in DEFAULT_MESSAGE_TYPES]
         schema = vol.Schema(
             {
+                vol.Optional(CONF_NAME, default=default_name): str,
                 vol.Optional(
                     CONF_LOCATION,
                     default={"latitude": default_lat, "longitude": default_lon},

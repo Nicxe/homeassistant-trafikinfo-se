@@ -12,6 +12,7 @@
         "title": "Trafikinfo SE",
         "description": "Välj vilka kategorier som ska få sensorer och ställ in uppdateringsintervall.",
         "data": {
+          "name": "Namn",
           "location": "Centrumposition",
           "radius_km": "Radie (km)",
           "scan_interval": "Uppdateringsintervall (minuter)",
@@ -32,6 +33,7 @@
         "title": "Trafikinfo SE alternativ",
         "description": "Ställ in uppdateringsintervall, vilka meddelandetyper som ska ha sensorer, och hur många händelser som visas i attribut.",
         "data": {
+          "name": "Namn",
           "location": "Centrumposition",
           "radius_km": "Radie (km)",
           "scan_interval": "Uppdateringsintervall (minuter)",

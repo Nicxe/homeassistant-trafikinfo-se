@@ -193,6 +193,10 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
     def suggested_object_id(self) -> str | None:
         """Suggest entity_id as sensor.trafikinfo_se_<name> on first creation."""
         name = self._attr_name or self._message_type
+        title = (self._entry.title or "").strip()
+        if title and title != "Trafikinfo SE":
+            # When multiple config entries exist, include the entry title to avoid collisions.
+            return f"{DOMAIN}_{slugify(title)}_{slugify(name)}"
         return f"{DOMAIN}_{slugify(name)}"
 
     @property
