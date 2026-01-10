@@ -78,7 +78,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Migrate old config entries."""
-    if entry.version >= 4:
+    if entry.version >= 5:
         return True
 
     _LOGGER.debug("Migrating config entry %s from version %s", entry.entry_id, entry.version)
@@ -166,8 +166,36 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     err,
                 )
 
-    hass.config_entries.async_update_entry(entry, data=new_data, options=new_options, version=4)
-    _LOGGER.debug("Migration to version 4 successful for %s", entry.entry_id)
+    if entry.version < 5:
+        # v5: Introduce filter_mode + counties, keep backward compatibility.
+        # Older entries used coordinate+radius only.
+        from .const import (
+            CONF_COUNTIES,
+            CONF_FILTER_MODE,
+            COUNTY_ALL,
+            DEFAULT_FILTER_MODE,
+            FILTER_MODE_COORDINATE,
+            FILTER_MODE_COUNTY,
+        )
+
+        mode = str(new_options.get(CONF_FILTER_MODE, new_data.get(CONF_FILTER_MODE, DEFAULT_FILTER_MODE)))
+        if mode == "sweden":
+            # Previously experimental: Sweden-wide mode; map to county mode with 'all'
+            new_data[CONF_FILTER_MODE] = FILTER_MODE_COUNTY
+            new_data[CONF_COUNTIES] = [COUNTY_ALL]
+        elif mode in (FILTER_MODE_COORDINATE, FILTER_MODE_COUNTY):
+            new_data.setdefault(CONF_FILTER_MODE, mode)
+        else:
+            new_data.setdefault(CONF_FILTER_MODE, FILTER_MODE_COORDINATE)
+
+        # If county mode is selected but no counties are set, default to Sweden-wide.
+        if new_data.get(CONF_FILTER_MODE) == FILTER_MODE_COUNTY:
+            counties = new_options.get(CONF_COUNTIES, new_data.get(CONF_COUNTIES))
+            if not isinstance(counties, list) or not counties:
+                new_data[CONF_COUNTIES] = [COUNTY_ALL]
+
+    hass.config_entries.async_update_entry(entry, data=new_data, options=new_options, version=5)
+    _LOGGER.debug("Migration to version 5 successful for %s", entry.entry_id)
     return True
 
 

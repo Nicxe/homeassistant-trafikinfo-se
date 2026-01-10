@@ -6,7 +6,7 @@
   "documentation": "https://github.com/Nicxe/homeassistant-trafikinfo-se",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/Nicxe/homeassistant-trafikinfo-se/issues",
-  "version": "0.2.0"
+  "version": "0.0.0"
 }
 
 
