@@ -261,6 +261,7 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
                 "message_type": self._message_type,
                 "filter_mode": getattr(self.coordinator, "filter_mode", None),
                 "filter_counties": getattr(self.coordinator, "counties", None),
+                "filter_roads": getattr(self.coordinator, "filter_roads", None),
                 "filter_center": {
                     "latitude": getattr(self.coordinator, "latitude", None),
                     "longitude": getattr(self.coordinator, "longitude", None),

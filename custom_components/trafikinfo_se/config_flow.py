@@ -19,6 +19,7 @@ from homeassistant.helpers.selector import selector
 from .const import (
     CONF_API_KEY,
     CONF_COUNTIES,
+    CONF_FILTER_ROADS,
     CONF_FILTER_MODE,
     CONF_LATITUDE,
     CONF_LOCATION,
@@ -206,6 +207,15 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
         if not isinstance(default_sort_location, dict):
             default_sort_location = {"latitude": self.hass.config.latitude, "longitude": self.hass.config.longitude}
+        default_filter_roads = entry.options.get(CONF_FILTER_ROADS, entry.data.get(CONF_FILTER_ROADS, []))
+        if isinstance(default_filter_roads, str):
+            parts: list[str] = []
+            for chunk in default_filter_roads.split(";"):
+                parts.extend(chunk.split(","))
+            default_filter_roads = parts  # type: ignore[assignment]
+        if not isinstance(default_filter_roads, list):
+            default_filter_roads = []
+        default_filter_roads = [str(x).strip() for x in default_filter_roads if str(x).strip()]
 
         default_scan = int(
             entry.options.get(
@@ -227,6 +237,7 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_MAX_ITEMS: default_max,
             CONF_SORT_MODE: default_sort_mode,
             CONF_SORT_LOCATION: default_sort_location,
+            CONF_FILTER_ROADS: list(default_filter_roads),
             CONF_MESSAGE_TYPES: list(default_msg_types),
             CONF_NAME: entry.title or "Trafikinfo SE",
         }
@@ -266,6 +277,21 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             name, scan_minutes, max_items, sort_mode, msg_types = self._finalize_common(user_input)
+            road_filter_raw = user_input.get(CONF_FILTER_ROADS, None)
+            road_filter_list = []
+            if road_filter_raw is None:
+                # Treat missing field as "unchanged" (some HA forms omit empty/untouched optional fields).
+                road_filter_list = list(self._reconfigure_defaults.get(CONF_FILTER_ROADS, []))
+            elif isinstance(road_filter_raw, str):
+                if not road_filter_raw.strip():
+                    road_filter_list = []
+                else:
+                    parts = []
+                    for chunk in road_filter_raw.split(";"):
+                        parts.extend(chunk.split(","))
+                    road_filter_list = [s.strip() for s in parts if s.strip()]
+            elif isinstance(road_filter_raw, list):
+                road_filter_list = [str(x).strip() for x in road_filter_raw if str(x).strip()]
             loc = user_input.get(CONF_LOCATION) or {}
             lat = float(loc.get("latitude", self.hass.config.latitude))
             lon = float(loc.get("longitude", self.hass.config.longitude))
@@ -281,6 +307,7 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_SCAN_INTERVAL: scan_minutes,
                     CONF_MAX_ITEMS: max_items,
                     CONF_SORT_MODE: sort_mode,
+                    CONF_FILTER_ROADS: list(road_filter_list),
                     CONF_MESSAGE_TYPES: list(msg_types),
                 }
             )
@@ -288,6 +315,8 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Keep options message_types if it exists; otherwise align it with data.
             new_options = dict(entry.options)
             new_options.setdefault(CONF_MESSAGE_TYPES, list(msg_types))
+            # Keep road filter in options too (options take precedence over data in coordinator).
+            new_options[CONF_FILTER_ROADS] = list(road_filter_list)
 
             if name and name != (entry.title or ""):
                 new_title = name
@@ -318,6 +347,13 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         }
                     }
                 ),
+                vol.Optional(
+                    CONF_FILTER_ROADS,
+                    default="",
+                    description={
+                        "suggested_value": ", ".join(self._reconfigure_defaults.get(CONF_FILTER_ROADS, []))
+                    },
+                ): str,
             }
         )
         schema_dict.update(
@@ -344,6 +380,20 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             name, scan_minutes, max_items, sort_mode, msg_types = self._finalize_common(user_input)
+            road_filter_raw = user_input.get(CONF_FILTER_ROADS, None)
+            road_filter_list = []
+            if road_filter_raw is None:
+                road_filter_list = list(self._reconfigure_defaults.get(CONF_FILTER_ROADS, []))
+            elif isinstance(road_filter_raw, str):
+                if not road_filter_raw.strip():
+                    road_filter_list = []
+                else:
+                    parts = []
+                    for chunk in road_filter_raw.split(";"):
+                        parts.extend(chunk.split(","))
+                    road_filter_list = [s.strip() for s in parts if s.strip()]
+            elif isinstance(road_filter_raw, list):
+                road_filter_list = [str(x).strip() for x in road_filter_raw if str(x).strip()]
             selected = user_input.get(CONF_COUNTIES)
             if not isinstance(selected, list) or not selected:
                 errors["base"] = "missing_counties"
@@ -366,11 +416,14 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             CONF_MAX_ITEMS: max_items,
                             CONF_SORT_MODE: sort_mode,
                             CONF_SORT_LOCATION: {"latitude": sort_lat, "longitude": sort_lon},
+                            CONF_FILTER_ROADS: list(road_filter_list),
                             CONF_MESSAGE_TYPES: list(msg_types),
                         }
                     )
                     new_options = dict(entry.options)
                     new_options.setdefault(CONF_MESSAGE_TYPES, list(msg_types))
+                    # Keep road filter in options too (options take precedence over data in coordinator).
+                    new_options[CONF_FILTER_ROADS] = list(road_filter_list)
 
                     if name and name != (entry.title or ""):
                         new_title = name
@@ -396,6 +449,13 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     {"select": {"options": county_options, "multiple": True, "mode": "list"}}
                 ),
                 vol.Optional(CONF_SORT_LOCATION, default=self._reconfigure_defaults.get(CONF_SORT_LOCATION)): selector({"location": {}}),
+                vol.Optional(
+                    CONF_FILTER_ROADS,
+                    default="",
+                    description={
+                        "suggested_value": ", ".join(self._reconfigure_defaults.get(CONF_FILTER_ROADS, []))
+                    },
+                ): str,
             }
         )
         schema_dict.update(
@@ -510,6 +570,14 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             name, scan_minutes, max_items, sort_mode, msg_types = self._finalize_common(user_input)
+            road_filter_raw = user_input.get(CONF_FILTER_ROADS, "")
+            road_filter_list = []
+            if isinstance(road_filter_raw, str):
+                if road_filter_raw.strip():
+                    parts = []
+                    for chunk in road_filter_raw.split(";"):
+                        parts.extend(chunk.split(","))
+                    road_filter_list = [s.strip() for s in parts if s.strip()]
             loc = user_input.get(CONF_LOCATION) or {}
             lat = float(loc.get("latitude", self.hass.config.latitude))
             lon = float(loc.get("longitude", self.hass.config.longitude))
@@ -523,6 +591,7 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_SCAN_INTERVAL: scan_minutes,
                 CONF_MAX_ITEMS: max_items,
                 CONF_SORT_MODE: sort_mode,
+                CONF_FILTER_ROADS: list(road_filter_list),
                 CONF_MESSAGE_TYPES: msg_types,
             }
             return self.async_create_entry(title=name, data=data)
@@ -549,6 +618,7 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         }
                     }
                 ),
+                vol.Optional(CONF_FILTER_ROADS, default=""): str,
             }
         )
         schema_dict.update(
@@ -573,6 +643,14 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             name, scan_minutes, max_items, sort_mode, msg_types = self._finalize_common(user_input)
+            road_filter_raw = user_input.get(CONF_FILTER_ROADS, "")
+            road_filter_list = []
+            if isinstance(road_filter_raw, str):
+                if road_filter_raw.strip():
+                    parts = []
+                    for chunk in road_filter_raw.split(";"):
+                        parts.extend(chunk.split(","))
+                    road_filter_list = [s.strip() for s in parts if s.strip()]
             selected = user_input.get(CONF_COUNTIES)
             if not isinstance(selected, list) or not selected:
                 errors["base"] = "missing_counties"
@@ -595,6 +673,7 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_MAX_ITEMS: max_items,
                         CONF_SORT_MODE: sort_mode,
                         CONF_SORT_LOCATION: {"latitude": sort_lat, "longitude": sort_lon},
+                        CONF_FILTER_ROADS: list(road_filter_list),
                         CONF_MESSAGE_TYPES: msg_types,
                     }
                     return self.async_create_entry(title=name, data=data)
@@ -616,6 +695,7 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         "longitude": self.hass.config.longitude,
                     },
                 ): selector({"location": {}}),
+                vol.Optional(CONF_FILTER_ROADS, default=""): str,
             }
         )
         schema_dict.update(
@@ -796,10 +876,28 @@ class TrafikinfoSEOptionsFlowHandler(config_entries.OptionsFlow):
         )
 
         if user_input is not None:
+            existing_list = (
+                list(self._config_entry.options.get(CONF_FILTER_ROADS) or [])
+                if isinstance(self._config_entry.options.get(CONF_FILTER_ROADS), list)
+                else []
+            )
+            existing_suggested = ", ".join([str(x) for x in existing_list if str(x).strip()])
             data = dict(self._config_entry.options)
             name, scan_minutes, max_items, sort_mode, msg_types = self._finalize_common(user_input)
             if name and name != (self._config_entry.title or ""):
                 self.hass.config_entries.async_update_entry(self._config_entry, title=name)
+            road_filter_raw = user_input.get(CONF_FILTER_ROADS, None)
+            road_filter_list = []
+            if road_filter_raw is None:
+                road_filter_list = [str(x).strip() for x in (data.get(CONF_FILTER_ROADS) or []) if str(x).strip()]
+            elif isinstance(road_filter_raw, str):
+                if not road_filter_raw.strip():
+                    road_filter_list = []
+                else:
+                    parts = []
+                    for chunk in road_filter_raw.split(";"):
+                        parts.extend(chunk.split(","))
+                    road_filter_list = [s.strip() for s in parts if s.strip()]
             loc = user_input.get(CONF_LOCATION) or {}
             lat = float(loc.get("latitude", self.hass.config.latitude))
             lon = float(loc.get("longitude", self.hass.config.longitude))
@@ -813,11 +911,18 @@ class TrafikinfoSEOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_SCAN_INTERVAL: scan_minutes,
                     CONF_MAX_ITEMS: max_items,
                     CONF_SORT_MODE: sort_mode,
+                    CONF_FILTER_ROADS: list(road_filter_list),
                     CONF_MESSAGE_TYPES: list(msg_types),
                 }
             )
             return self.async_create_entry(title="", data=data)
 
+        default_filter_roads = self._config_entry.options.get(
+            CONF_FILTER_ROADS, self._config_entry.data.get(CONF_FILTER_ROADS, [])
+        )
+        if not isinstance(default_filter_roads, list):
+            default_filter_roads = []
+        suggested_roads = ", ".join([str(x) for x in default_filter_roads if str(x).strip()])
         schema_dict: dict[vol.Marker, Any] = {
             vol.Optional(CONF_NAME, default=common["name"]): str,
             vol.Optional(CONF_LOCATION, default=default_location): selector({"location": {}}),
@@ -832,6 +937,11 @@ class TrafikinfoSEOptionsFlowHandler(config_entries.OptionsFlow):
                     }
                 }
             ),
+            vol.Optional(
+                CONF_FILTER_ROADS,
+                default="",
+                description={"suggested_value": suggested_roads},
+            ): str,
             vol.Optional(CONF_SORT_MODE, default=common["sort_mode"]): self._sort_mode_selector(),
             vol.Optional(CONF_MESSAGE_TYPES, default=common["message_types"]): self._message_types_selector(),
             vol.Optional(CONF_MAX_ITEMS, default=common["max_items"]): selector(
@@ -872,10 +982,28 @@ class TrafikinfoSEOptionsFlowHandler(config_entries.OptionsFlow):
 
         errors: dict[str, str] = {}
         if user_input is not None:
+            existing_list = (
+                list(self._config_entry.options.get(CONF_FILTER_ROADS) or [])
+                if isinstance(self._config_entry.options.get(CONF_FILTER_ROADS), list)
+                else []
+            )
+            existing_suggested = ", ".join([str(x) for x in existing_list if str(x).strip()])
             data = dict(self._config_entry.options)
             name, scan_minutes, max_items, sort_mode, msg_types = self._finalize_common(user_input)
             if name and name != (self._config_entry.title or ""):
                 self.hass.config_entries.async_update_entry(self._config_entry, title=name)
+            road_filter_raw = user_input.get(CONF_FILTER_ROADS, None)
+            road_filter_list = []
+            if road_filter_raw is None:
+                road_filter_list = [str(x).strip() for x in (data.get(CONF_FILTER_ROADS) or []) if str(x).strip()]
+            elif isinstance(road_filter_raw, str):
+                if not road_filter_raw.strip():
+                    road_filter_list = []
+                else:
+                    parts = []
+                    for chunk in road_filter_raw.split(";"):
+                        parts.extend(chunk.split(","))
+                    road_filter_list = [s.strip() for s in parts if s.strip()]
             selected = user_input.get(CONF_COUNTIES)
             if not isinstance(selected, list) or not selected:
                 errors["base"] = "missing_counties"
@@ -897,6 +1025,7 @@ class TrafikinfoSEOptionsFlowHandler(config_entries.OptionsFlow):
                             CONF_MAX_ITEMS: max_items,
                             CONF_SORT_MODE: sort_mode,
                             CONF_SORT_LOCATION: {"latitude": sort_lat, "longitude": sort_lon},
+                            CONF_FILTER_ROADS: list(road_filter_list),
                             CONF_MESSAGE_TYPES: list(msg_types),
                         }
                     )
@@ -905,12 +1034,23 @@ class TrafikinfoSEOptionsFlowHandler(config_entries.OptionsFlow):
         county_options = [{"label": "Hela Sverige", "value": COUNTY_ALL}] + [
             {"label": name, "value": code} for code, name in COUNTIES.items()
         ]
+        default_filter_roads = self._config_entry.options.get(
+            CONF_FILTER_ROADS, self._config_entry.data.get(CONF_FILTER_ROADS, [])
+        )
+        if not isinstance(default_filter_roads, list):
+            default_filter_roads = []
+        suggested_roads = ", ".join([str(x) for x in default_filter_roads if str(x).strip()])
         schema_dict: dict[vol.Marker, Any] = {
             vol.Optional(CONF_NAME, default=common["name"]): str,
             vol.Optional(CONF_COUNTIES, default=list(default_counties)): selector(
                 {"select": {"options": county_options, "multiple": True, "mode": "list"}}
             ),
             vol.Optional(CONF_SORT_LOCATION, default=default_sort_location): selector({"location": {}}),
+            vol.Optional(
+                CONF_FILTER_ROADS,
+                default="",
+                description={"suggested_value": suggested_roads},
+            ): str,
             vol.Optional(CONF_SORT_MODE, default=common["sort_mode"]): self._sort_mode_selector(),
             vol.Optional(CONF_MESSAGE_TYPES, default=common["message_types"]): self._message_types_selector(),
             vol.Optional(CONF_MAX_ITEMS, default=common["max_items"]): selector(

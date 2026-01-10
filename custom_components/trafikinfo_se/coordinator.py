@@ -24,6 +24,7 @@ from .const import (
     CONF_API_KEY,
     CONF_COUNTIES,
     CONF_FILTER_MODE,
+    CONF_FILTER_ROADS,
     CONF_LATITUDE,
     CONF_LONGITUDE,
     CONF_MAX_ITEMS,
@@ -381,6 +382,15 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
         self._max_items = int(
             entry.options.get(CONF_MAX_ITEMS, entry.data.get(CONF_MAX_ITEMS, DEFAULT_MAX_ITEMS))
         )
+        self._filter_roads: list[str] = []
+        raw_roads = entry.options.get(CONF_FILTER_ROADS, entry.data.get(CONF_FILTER_ROADS, []))
+        if isinstance(raw_roads, str):
+            parts: list[str] = []
+            for chunk in raw_roads.split(";"):
+                parts.extend(chunk.split(","))
+            raw_roads = parts
+        if isinstance(raw_roads, list):
+            self._filter_roads = [str(x).strip() for x in raw_roads if str(x).strip()]
         self._sort_mode = str(
             entry.options.get(CONF_SORT_MODE, entry.data.get(CONF_SORT_MODE, DEFAULT_SORT_MODE))
         )
@@ -460,6 +470,10 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
         return self._max_items
 
     @property
+    def filter_roads(self) -> list[str]:
+        return list(self._filter_roads)
+
+    @property
     def sort_mode(self) -> str:
         return self._sort_mode
 
@@ -485,6 +499,16 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
 
     def apply_options(self) -> None:
         """Apply updated options from the config entry."""
+        raw_roads = self._entry.options.get(CONF_FILTER_ROADS, self._entry.data.get(CONF_FILTER_ROADS, []))
+        if isinstance(raw_roads, str):
+            parts: list[str] = []
+            for chunk in raw_roads.split(";"):
+                parts.extend(chunk.split(","))
+            raw_roads = parts
+        if isinstance(raw_roads, list):
+            self._filter_roads = [str(x).strip() for x in raw_roads if str(x).strip()]
+        else:
+            self._filter_roads = []
         self._sort_mode = str(
             self._entry.options.get(CONF_SORT_MODE, self._entry.data.get(CONF_SORT_MODE, DEFAULT_SORT_MODE))
         )
@@ -558,6 +582,47 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
         if event.message_type == "Viktig trafikinformation":
             return True
         return False
+
+    def _normalize_road_filter_token(self, value: str) -> str:
+        s = (value or "").strip().lower()
+        if not s:
+            return ""
+        # Allow user-friendly inputs like "Väg 163" / "Road 163" by stripping the prefix.
+        s = re.sub(r"^(väg|vag|road)\s+", "", s, flags=re.IGNORECASE)
+        # Normalize whitespace
+        s = re.sub(r"\s+", " ", s).strip()
+        return s
+
+    def _road_filter_match(self, event: TrafikinfoEvent, tokens: list[str]) -> bool:
+        if not tokens:
+            return True
+        road_text = f"{event.road_name or ''} {event.road_number or ''}".lower()
+        road_no = (event.road_number or "").strip().lower()
+        for t in tokens:
+            if not t:
+                continue
+            if road_no and t == road_no:
+                return True
+            if t in road_text:
+                return True
+        return False
+
+    def _apply_road_filter(self, events: list[TrafikinfoEvent]) -> list[TrafikinfoEvent]:
+        """Apply road filter, but never drop important safety/national messages."""
+        if not self._filter_roads:
+            return events
+        tokens = [self._normalize_road_filter_token(x) for x in self._filter_roads]
+        tokens = [t for t in tokens if t]
+        if not tokens:
+            return events
+        out: list[TrafikinfoEvent] = []
+        for e in events:
+            if self._is_important_without_geo(e):
+                out.append(e)
+                continue
+            if self._road_filter_match(e, tokens):
+                out.append(e)
+        return out
 
     def event_distance_km(self, event: TrafikinfoEvent) -> float | None:
         """Compute min distance (km) from sorting reference to event geometry."""
@@ -850,6 +915,7 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
 
         data = _parse_response(text)
         filtered = [e for e in data.events if self._include_event(e)]
+        filtered = self._apply_road_filter(filtered)
         # Best-effort local icon caching for picture cards
         icon_ids = [e.icon_id for e in filtered if e.icon_id]
         try:

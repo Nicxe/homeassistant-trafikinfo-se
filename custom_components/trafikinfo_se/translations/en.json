@@ -21,6 +21,8 @@
         "data": {
           "location": "Center position",
           "radius_km": "Radius (km)",
+          "filter_roads": "Road filter (road numbers/names)",
+          "filter_roads": "Road filter (road numbers/names)",
           "name": "Name",
           "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",
@@ -34,6 +36,8 @@
         "data": {
           "counties": "Counties",
           "sort_location": "Reference position (for selection/sorting)",
+          "filter_roads": "Road filter (road numbers/names)",
+          "filter_roads": "Road filter (road numbers/names)",
           "name": "Name",
           "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",
@@ -54,6 +58,8 @@
         "data": {
           "location": "Center position",
           "radius_km": "Radius (km)",
+          "filter_roads": "Road filter (road numbers/names)",
+          "filter_roads": "Road filter (road numbers/names)",
           "name": "Name",
           "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",
@@ -67,6 +73,8 @@
         "data": {
           "counties": "Counties",
           "sort_location": "Reference position (for selection/sorting)",
+          "filter_roads": "Road filter (road numbers/names)",
+          "filter_roads": "Road filter (road numbers/names)",
           "name": "Name",
           "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",
@@ -97,6 +105,8 @@
         "data": {
           "location": "Center position",
           "radius_km": "Radius (km)",
+          "filter_roads": "Road filter (road numbers/names)",
+          "filter_roads": "Road filter (road numbers/names)",
           "name": "Name",
           "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",
@@ -110,6 +120,8 @@
         "data": {
           "counties": "Counties",
           "sort_location": "Reference position (for selection/sorting)",
+          "filter_roads": "Road filter (road numbers/names)",
+          "filter_roads": "Road filter (road numbers/names)",
           "name": "Name",
           "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",

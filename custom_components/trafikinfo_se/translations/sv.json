@@ -21,6 +21,7 @@
         "data": {
           "location": "Centrumposition",
           "radius_km": "Radie (km)",
+          "filter_roads": "Vägfilter (vägnummer/namn)",
           "name": "Namn",
           "scan_interval": "Uppdateringsintervall (minuter)",
           "max_items": "Max antal händelser i attribut",
@@ -34,6 +35,7 @@
         "data": {
           "counties": "Län",
           "sort_location": "Referensposition (för urval/sortering)",
+          "filter_roads": "Vägfilter (vägnummer/namn)",
           "name": "Namn",
           "scan_interval": "Uppdateringsintervall (minuter)",
           "max_items": "Max antal händelser i attribut",
@@ -54,6 +56,7 @@
         "data": {
           "location": "Centrumposition",
           "radius_km": "Radie (km)",
+          "filter_roads": "Vägfilter (vägnummer/namn)",
           "name": "Namn",
           "scan_interval": "Uppdateringsintervall (minuter)",
           "max_items": "Max antal händelser i attribut",
@@ -67,6 +70,7 @@
         "data": {
           "counties": "Län",
           "sort_location": "Referensposition (för urval/sortering)",
+          "filter_roads": "Vägfilter (vägnummer/namn)",
           "name": "Namn",
           "scan_interval": "Uppdateringsintervall (minuter)",
           "max_items": "Max antal händelser i attribut",
@@ -97,6 +101,7 @@
         "data": {
           "location": "Centrumposition",
           "radius_km": "Radie (km)",
+          "filter_roads": "Vägfilter (vägnummer/namn)",
           "name": "Namn",
           "scan_interval": "Uppdateringsintervall (minuter)",
           "max_items": "Max antal händelser i attribut",
@@ -110,6 +115,7 @@
         "data": {
           "counties": "Län",
           "sort_location": "Referensposition (för urval/sortering)",
+          "filter_roads": "Vägfilter (vägnummer/namn)",
           "name": "Namn",
           "scan_interval": "Uppdateringsintervall (minuter)",
           "max_items": "Max antal händelser i attribut",
