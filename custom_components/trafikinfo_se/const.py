@@ -15,6 +15,16 @@ CONF_LATITUDE = "latitude"
 CONF_LONGITUDE = "longitude"
 CONF_RADIUS_KM = "radius_km"
 
+# Sorting / selection
+CONF_SORT_MODE = "sort_mode"
+CONF_SORT_LOCATION = "sort_location"
+
+SORT_MODE_RELEVANCE = "relevance"  # important -> nearest -> newest
+SORT_MODE_NEAREST = "nearest"      # nearest -> newest
+SORT_MODE_NEWEST = "newest"        # newest only
+
+DEFAULT_SORT_MODE = SORT_MODE_RELEVANCE
+
 # Filtering
 CONF_FILTER_MODE = "filter_mode"
 CONF_COUNTIES = "counties"

@@ -24,6 +24,7 @@
           "name": "Namn",
           "scan_interval": "Uppdateringsintervall (minuter)",
           "max_items": "Max antal händelser i attribut",
+          "sort_mode": "Urval / sortering",
           "message_types": "Meddelandetyper (kategorier)"
         }
       },
@@ -32,9 +33,11 @@
         "description": "Filtrera händelser på ett eller flera län (eller hela Sverige).",
         "data": {
           "counties": "Län",
+          "sort_location": "Referensposition (för urval/sortering)",
           "name": "Namn",
           "scan_interval": "Uppdateringsintervall (minuter)",
           "max_items": "Max antal händelser i attribut",
+          "sort_mode": "Urval / sortering",
           "message_types": "Meddelandetyper (kategorier)"
         }
       },
@@ -54,6 +57,7 @@
           "name": "Namn",
           "scan_interval": "Uppdateringsintervall (minuter)",
           "max_items": "Max antal händelser i attribut",
+          "sort_mode": "Urval / sortering",
           "message_types": "Meddelandetyper (kategorier)"
         }
       },
@@ -62,9 +66,11 @@
         "description": "Uppdatera länfiltrering (eller hela Sverige).",
         "data": {
           "counties": "Län",
+          "sort_location": "Referensposition (för urval/sortering)",
           "name": "Namn",
           "scan_interval": "Uppdateringsintervall (minuter)",
           "max_items": "Max antal händelser i attribut",
+          "sort_mode": "Urval / sortering",
           "message_types": "Meddelandetyper (kategorier)"
         }
       }
@@ -94,6 +100,7 @@
           "name": "Namn",
           "scan_interval": "Uppdateringsintervall (minuter)",
           "max_items": "Max antal händelser i attribut",
+          "sort_mode": "Urval / sortering",
           "message_types": "Meddelandetyper (kategorier)"
         }
       },
@@ -102,9 +109,11 @@
         "description": "Uppdatera länfiltrering (eller hela Sverige).",
         "data": {
           "counties": "Län",
+          "sort_location": "Referensposition (för urval/sortering)",
           "name": "Namn",
           "scan_interval": "Uppdateringsintervall (minuter)",
           "max_items": "Max antal händelser i attribut",
+          "sort_mode": "Urval / sortering",
           "message_types": "Meddelandetyper (kategorier)"
         }
       }

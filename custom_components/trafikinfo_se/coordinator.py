@@ -29,15 +29,21 @@ from .const import (
     CONF_MAX_ITEMS,
     CONF_RADIUS_KM,
     CONF_SCAN_INTERVAL,
+    CONF_SORT_LOCATION,
+    CONF_SORT_MODE,
     COUNTY_ALL,
     DEFAULT_RADIUS_KM,
     DEFAULT_FILTER_MODE,
     DEFAULT_MAX_ITEMS,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_SORT_MODE,
     DOMAIN,
     FILTER_MODE_COORDINATE,
     FILTER_MODE_COUNTY,
     SITUATION_SCHEMA_VERSION,
+    SORT_MODE_NEAREST,
+    SORT_MODE_NEWEST,
+    SORT_MODE_RELEVANCE,
     TRAFIKVERKET_DATACACHE_URL,
     TRAFIKVERKET_ICONS_BASE_URL,
     TRAFIKVERKET_ICON_V2_URL_PREFIX,
@@ -375,6 +381,11 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
         self._max_items = int(
             entry.options.get(CONF_MAX_ITEMS, entry.data.get(CONF_MAX_ITEMS, DEFAULT_MAX_ITEMS))
         )
+        self._sort_mode = str(
+            entry.options.get(CONF_SORT_MODE, entry.data.get(CONF_SORT_MODE, DEFAULT_SORT_MODE))
+        )
+        if self._sort_mode not in (SORT_MODE_RELEVANCE, SORT_MODE_NEAREST, SORT_MODE_NEWEST):
+            self._sort_mode = DEFAULT_SORT_MODE
         self._filter_mode = str(
             entry.options.get(CONF_FILTER_MODE, entry.data.get(CONF_FILTER_MODE, DEFAULT_FILTER_MODE))
         )
@@ -394,6 +405,23 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
         self._longitude = float(
             entry.options.get(CONF_LONGITUDE, entry.data.get(CONF_LONGITUDE, hass.config.longitude))
         )
+        # Sorting reference point:
+        # - Coordinate mode: uses the configured center (lat/lon)
+        # - County mode: defaults to HA home location, but can be overridden via sort_location
+        self._sort_latitude = float(hass.config.latitude)
+        self._sort_longitude = float(hass.config.longitude)
+        if self._filter_mode == FILTER_MODE_COORDINATE:
+            self._sort_latitude = float(self._latitude)
+            self._sort_longitude = float(self._longitude)
+        else:
+            sort_loc = entry.options.get(CONF_SORT_LOCATION, entry.data.get(CONF_SORT_LOCATION))
+            if isinstance(sort_loc, dict):
+                try:
+                    self._sort_latitude = float(sort_loc.get("latitude", hass.config.latitude))
+                    self._sort_longitude = float(sort_loc.get("longitude", hass.config.longitude))
+                except (TypeError, ValueError):
+                    self._sort_latitude = float(hass.config.latitude)
+                    self._sort_longitude = float(hass.config.longitude)
         self._radius_km = float(
             entry.options.get(CONF_RADIUS_KM, entry.data.get(CONF_RADIUS_KM, DEFAULT_RADIUS_KM))
         )
@@ -432,6 +460,18 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
         return self._max_items
 
     @property
+    def sort_mode(self) -> str:
+        return self._sort_mode
+
+    @property
+    def sort_latitude(self) -> float:
+        return self._sort_latitude
+
+    @property
+    def sort_longitude(self) -> float:
+        return self._sort_longitude
+
+    @property
     def latitude(self) -> float:
         return self._latitude
 
@@ -445,6 +485,11 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
 
     def apply_options(self) -> None:
         """Apply updated options from the config entry."""
+        self._sort_mode = str(
+            self._entry.options.get(CONF_SORT_MODE, self._entry.data.get(CONF_SORT_MODE, DEFAULT_SORT_MODE))
+        )
+        if self._sort_mode not in (SORT_MODE_RELEVANCE, SORT_MODE_NEAREST, SORT_MODE_NEWEST):
+            self._sort_mode = DEFAULT_SORT_MODE
         self._filter_mode = str(
             self._entry.options.get(
                 CONF_FILTER_MODE,
@@ -490,6 +535,22 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
                 CONF_RADIUS_KM, self._entry.data.get(CONF_RADIUS_KM, DEFAULT_RADIUS_KM)
             )
         )
+        # Recompute sorting reference point
+        if self._filter_mode == FILTER_MODE_COORDINATE:
+            self._sort_latitude = float(self._latitude)
+            self._sort_longitude = float(self._longitude)
+        else:
+            sort_loc = self._entry.options.get(CONF_SORT_LOCATION, self._entry.data.get(CONF_SORT_LOCATION))
+            if isinstance(sort_loc, dict):
+                try:
+                    self._sort_latitude = float(sort_loc.get("latitude", self.hass.config.latitude))
+                    self._sort_longitude = float(sort_loc.get("longitude", self.hass.config.longitude))
+                except (TypeError, ValueError):
+                    self._sort_latitude = float(self.hass.config.latitude)
+                    self._sort_longitude = float(self.hass.config.longitude)
+            else:
+                self._sort_latitude = float(self.hass.config.latitude)
+                self._sort_longitude = float(self.hass.config.longitude)
 
     def _is_important_without_geo(self, event: TrafikinfoEvent) -> bool:
         if event.safety_related_message is True:
@@ -497,6 +558,79 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
         if event.message_type == "Viktig trafikinformation":
             return True
         return False
+
+    def event_distance_km(self, event: TrafikinfoEvent) -> float | None:
+        """Compute min distance (km) from sorting reference to event geometry."""
+        if not event.geometry_wgs84:
+            return None
+        pts = self._wkt_points(event.geometry_wgs84)
+        if not pts:
+            return None
+        center_lon = float(self._sort_longitude)
+        center_lat = float(self._sort_latitude)
+        best: float | None = None
+        for lon, lat in pts[:200]:  # cap work for huge geometries
+            d = self._haversine_km(center_lon, center_lat, lon, lat)
+            if best is None or d < best:
+                best = d
+        return best
+
+    def sort_events(self, events: list[TrafikinfoEvent]) -> list[TrafikinfoEvent]:
+        """Sort events according to configured sort_mode."""
+        if not events:
+            return []
+
+        def _pub_ts(e: TrafikinfoEvent) -> float:
+            pub = e.publication_time
+            if not isinstance(pub, datetime):
+                return 0.0
+            try:
+                return float(pub.timestamp())
+            except Exception:
+                return 0.0
+
+        if self._sort_mode == SORT_MODE_NEWEST:
+            # Already newest-first globally, but filter may disturb ordering in future;
+            # make it explicit and stable.
+            def _k_newest(e: TrafikinfoEvent):
+                return (
+                    e.publication_time or datetime.min.replace(tzinfo=dt_util.UTC),
+                    e.situation_id or "",
+                    e.deviation_id or "",
+                )
+
+            return sorted(events, key=_k_newest, reverse=True)
+
+        # Nearest / relevance need distances. Cache per call (avoid recompute per key element).
+        dist_cache: dict[tuple[str | None, str | None], float | None] = {}
+
+        def _dist(e: TrafikinfoEvent) -> float | None:
+            key = (e.situation_id, e.deviation_id)
+            if key in dist_cache:
+                return dist_cache[key]
+            dist_cache[key] = self.event_distance_km(e)
+            return dist_cache[key]
+
+        def _k_nearest(e: TrafikinfoEvent):
+            d = _dist(e)
+            missing = 1 if d is None else 0  # known distances first
+            dval = float(d) if d is not None else float("inf")
+            # Newest first as tie-breaker
+            return (missing, dval, -_pub_ts(e), e.situation_id or "", e.deviation_id or "")
+
+        if self._sort_mode == SORT_MODE_NEAREST:
+            return sorted(events, key=_k_nearest, reverse=False)
+
+        # Default: relevance (important first, then nearest, then newest)
+        def _k_relevance(e: TrafikinfoEvent):
+            important = 0 if self._is_important_without_geo(e) else 1
+            d = _dist(e)
+            missing = 1 if d is None else 0
+            dval = float(d) if d is not None else float("inf")
+            # Newest first within same bucket:
+            return (important, missing, dval, -_pub_ts(e), e.situation_id or "", e.deviation_id or "")
+
+        return sorted(events, key=_k_relevance, reverse=False)
 
     def _in_counties(self, event: TrafikinfoEvent) -> bool:
         if COUNTY_ALL in self._counties:

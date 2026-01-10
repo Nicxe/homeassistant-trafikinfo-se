@@ -27,6 +27,8 @@ from .const import (
     CONF_MESSAGE_TYPES,
     CONF_RADIUS_KM,
     CONF_SCAN_INTERVAL,
+    CONF_SORT_LOCATION,
+    CONF_SORT_MODE,
     COUNTY_ALL,
     COUNTIES,
     DEFAULT_COUNTIES,
@@ -35,9 +37,13 @@ from .const import (
     DEFAULT_MAX_ITEMS,
     DEFAULT_MESSAGE_TYPES,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_SORT_MODE,
     DOMAIN,
     FILTER_MODE_COORDINATE,
     FILTER_MODE_COUNTY,
+    SORT_MODE_NEAREST,
+    SORT_MODE_NEWEST,
+    SORT_MODE_RELEVANCE,
     SITUATION_SCHEMA_VERSION,
     TRAFIKVERKET_DATACACHE_URL,
 )
@@ -188,6 +194,18 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         default_counties = entry.options.get(CONF_COUNTIES, entry.data.get(CONF_COUNTIES, list(DEFAULT_COUNTIES)))
         if not isinstance(default_counties, list):
             default_counties = list(DEFAULT_COUNTIES)
+        default_sort_mode = str(entry.options.get(CONF_SORT_MODE, entry.data.get(CONF_SORT_MODE, DEFAULT_SORT_MODE)))
+        if default_sort_mode not in (SORT_MODE_RELEVANCE, SORT_MODE_NEAREST, SORT_MODE_NEWEST):
+            default_sort_mode = DEFAULT_SORT_MODE
+        default_sort_location = entry.options.get(
+            CONF_SORT_LOCATION,
+            entry.data.get(
+                CONF_SORT_LOCATION,
+                {"latitude": self.hass.config.latitude, "longitude": self.hass.config.longitude},
+            ),
+        )
+        if not isinstance(default_sort_location, dict):
+            default_sort_location = {"latitude": self.hass.config.latitude, "longitude": self.hass.config.longitude}
 
         default_scan = int(
             entry.options.get(
@@ -207,6 +225,8 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_COUNTIES: list(default_counties),
             CONF_SCAN_INTERVAL: default_scan,
             CONF_MAX_ITEMS: default_max,
+            CONF_SORT_MODE: default_sort_mode,
+            CONF_SORT_LOCATION: default_sort_location,
             CONF_MESSAGE_TYPES: list(default_msg_types),
             CONF_NAME: entry.title or "Trafikinfo SE",
         }
@@ -245,7 +265,7 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         entry = self._reconfigure_entry
 
         if user_input is not None:
-            name, scan_minutes, max_items, msg_types = self._finalize_common(user_input)
+            name, scan_minutes, max_items, sort_mode, msg_types = self._finalize_common(user_input)
             loc = user_input.get(CONF_LOCATION) or {}
             lat = float(loc.get("latitude", self.hass.config.latitude))
             lon = float(loc.get("longitude", self.hass.config.longitude))
@@ -260,6 +280,7 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_RADIUS_KM: radius_km,
                     CONF_SCAN_INTERVAL: scan_minutes,
                     CONF_MAX_ITEMS: max_items,
+                    CONF_SORT_MODE: sort_mode,
                     CONF_MESSAGE_TYPES: list(msg_types),
                 }
             )
@@ -281,21 +302,38 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 title=new_title,
             )
 
-        schema_dict: dict[vol.Marker, Any] = {
-            vol.Optional(CONF_LOCATION, default=self._reconfigure_defaults.get(CONF_LOCATION)): selector({"location": {}}),
-            vol.Optional(CONF_RADIUS_KM, default=self._reconfigure_defaults.get(CONF_RADIUS_KM, DEFAULT_RADIUS_KM)): selector(
-                {
-                    "number": {
-                        "min": 1,
-                        "max": 250,
-                        "step": 1,
-                        "unit_of_measurement": "km",
-                        "mode": "slider",
+        schema_dict: dict[vol.Marker, Any] = {}
+        schema_dict.update(self._schema_name(self._reconfigure_defaults.get(CONF_NAME, "Trafikinfo SE")))
+        schema_dict.update(
+            {
+                vol.Optional(CONF_LOCATION, default=self._reconfigure_defaults.get(CONF_LOCATION)): selector({"location": {}}),
+                vol.Optional(CONF_RADIUS_KM, default=self._reconfigure_defaults.get(CONF_RADIUS_KM, DEFAULT_RADIUS_KM)): selector(
+                    {
+                        "number": {
+                            "min": 1,
+                            "max": 250,
+                            "step": 1,
+                            "unit_of_measurement": "km",
+                            "mode": "slider",
+                        }
                     }
-                }
-            ),
-        }
-        schema_dict.update(self._common_schema(default_name=self._reconfigure_defaults.get(CONF_NAME, "Trafikinfo SE")))
+                ),
+            }
+        )
+        schema_dict.update(
+            self._schema_common_tail(
+                default_scan_minutes=int(
+                    self._reconfigure_defaults.get(
+                        CONF_SCAN_INTERVAL, int(DEFAULT_SCAN_INTERVAL.total_seconds() / 60)
+                    )
+                ),
+                default_max_items=int(self._reconfigure_defaults.get(CONF_MAX_ITEMS, DEFAULT_MAX_ITEMS)),
+                default_sort_mode=str(self._reconfigure_defaults.get(CONF_SORT_MODE, DEFAULT_SORT_MODE)),
+                default_message_types=list(
+                    self._reconfigure_defaults.get(CONF_MESSAGE_TYPES, list(DEFAULT_MESSAGE_TYPES))
+                ),
+            )
+        )
         return self.async_show_form(step_id="reconfigure_coordinate", data_schema=vol.Schema(schema_dict))
 
     async def async_step_reconfigure_counties(self, user_input: dict[str, Any] | None = None):
@@ -305,7 +343,7 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            name, scan_minutes, max_items, msg_types = self._finalize_common(user_input)
+            name, scan_minutes, max_items, sort_mode, msg_types = self._finalize_common(user_input)
             selected = user_input.get(CONF_COUNTIES)
             if not isinstance(selected, list) or not selected:
                 errors["base"] = "missing_counties"
@@ -316,6 +354,9 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 else:
                     if COUNTY_ALL in counties:
                         counties = [COUNTY_ALL]
+                    sort_loc = user_input.get(CONF_SORT_LOCATION) or {}
+                    sort_lat = float(sort_loc.get("latitude", self.hass.config.latitude))
+                    sort_lon = float(sort_loc.get("longitude", self.hass.config.longitude))
                     new_data = dict(entry.data)
                     new_data.update(
                         {
@@ -323,6 +364,8 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             CONF_COUNTIES: counties,
                             CONF_SCAN_INTERVAL: scan_minutes,
                             CONF_MAX_ITEMS: max_items,
+                            CONF_SORT_MODE: sort_mode,
+                            CONF_SORT_LOCATION: {"latitude": sort_lat, "longitude": sort_lon},
                             CONF_MESSAGE_TYPES: list(msg_types),
                         }
                     )
@@ -345,12 +388,30 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         county_options = [{"label": "Hela Sverige", "value": COUNTY_ALL}] + [
             {"label": name, "value": code} for code, name in COUNTIES.items()
         ]
-        schema_dict: dict[vol.Marker, Any] = {
-            vol.Optional(CONF_COUNTIES, default=self._reconfigure_defaults.get(CONF_COUNTIES, list(DEFAULT_COUNTIES))): selector(
-                {"select": {"options": county_options, "multiple": True, "mode": "list"}}
-            ),
-        }
-        schema_dict.update(self._common_schema(default_name=self._reconfigure_defaults.get(CONF_NAME, "Trafikinfo SE")))
+        schema_dict: dict[vol.Marker, Any] = {}
+        schema_dict.update(self._schema_name(self._reconfigure_defaults.get(CONF_NAME, "Trafikinfo SE")))
+        schema_dict.update(
+            {
+                vol.Optional(CONF_COUNTIES, default=self._reconfigure_defaults.get(CONF_COUNTIES, list(DEFAULT_COUNTIES))): selector(
+                    {"select": {"options": county_options, "multiple": True, "mode": "list"}}
+                ),
+                vol.Optional(CONF_SORT_LOCATION, default=self._reconfigure_defaults.get(CONF_SORT_LOCATION)): selector({"location": {}}),
+            }
+        )
+        schema_dict.update(
+            self._schema_common_tail(
+                default_scan_minutes=int(
+                    self._reconfigure_defaults.get(
+                        CONF_SCAN_INTERVAL, int(DEFAULT_SCAN_INTERVAL.total_seconds() / 60)
+                    )
+                ),
+                default_max_items=int(self._reconfigure_defaults.get(CONF_MAX_ITEMS, DEFAULT_MAX_ITEMS)),
+                default_sort_mode=str(self._reconfigure_defaults.get(CONF_SORT_MODE, DEFAULT_SORT_MODE)),
+                default_message_types=list(
+                    self._reconfigure_defaults.get(CONF_MESSAGE_TYPES, list(DEFAULT_MESSAGE_TYPES))
+                ),
+            )
+        )
         return self.async_show_form(
             step_id="reconfigure_counties", data_schema=vol.Schema(schema_dict), errors=errors
         )
@@ -383,14 +444,37 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
         return self.async_show_form(step_id="filter_mode", data_schema=schema)
 
-    def _common_schema(self, *, default_name: str) -> dict[vol.Marker, Any]:
+    def _sort_mode_selector(self) -> Any:
+        sort_mode_options = [
+            {"label": "Relevans (viktigt → närmast → nyast)", "value": SORT_MODE_RELEVANCE},
+            {"label": "Närmast", "value": SORT_MODE_NEAREST},
+            {"label": "Nyast", "value": SORT_MODE_NEWEST},
+        ]
+        return selector({"select": {"options": sort_mode_options, "mode": "dropdown"}})
+
+    def _message_types_selector(self) -> Any:
         options = [{"label": s, "value": s} for s in DEFAULT_MESSAGE_TYPES]
+        return selector({"select": {"options": options, "multiple": True, "mode": "list"}})
+
+    def _schema_name(self, default_name: str) -> dict[vol.Marker, Any]:
+        return {vol.Optional(CONF_NAME, default=default_name): str}
+
+    def _schema_common_tail(
+        self,
+        *,
+        default_scan_minutes: int,
+        default_max_items: int,
+        default_sort_mode: str,
+        default_message_types: list[str],
+    ) -> dict[vol.Marker, Any]:
+        # Order: sorting -> types -> attribute limit -> update interval
         return {
-            vol.Optional(CONF_NAME, default=default_name): str,
-            vol.Optional(
-                CONF_SCAN_INTERVAL,
-                default=int(DEFAULT_SCAN_INTERVAL.total_seconds() / 60),
-            ): selector(
+            vol.Optional(CONF_SORT_MODE, default=default_sort_mode): self._sort_mode_selector(),
+            vol.Optional(CONF_MESSAGE_TYPES, default=default_message_types): self._message_types_selector(),
+            vol.Optional(CONF_MAX_ITEMS, default=default_max_items): selector(
+                {"number": {"min": 0, "max": 200, "step": 1, "mode": "box"}}
+            ),
+            vol.Optional(CONF_SCAN_INTERVAL, default=default_scan_minutes): selector(
                 {
                     "number": {
                         "min": 1,
@@ -401,24 +485,21 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     }
                 }
             ),
-            vol.Optional(CONF_MAX_ITEMS, default=DEFAULT_MAX_ITEMS): selector(
-                {"number": {"min": 0, "max": 200, "step": 1, "mode": "box"}}
-            ),
-            vol.Optional(CONF_MESSAGE_TYPES, default=list(DEFAULT_MESSAGE_TYPES)): selector(
-                {"select": {"options": options, "multiple": True, "mode": "list"}}
-            ),
         }
 
-    def _finalize_common(self, user_input: dict[str, Any]) -> tuple[str, int, int, list[str]]:
+    def _finalize_common(self, user_input: dict[str, Any]) -> tuple[str, int, int, str, list[str]]:
         name = str(user_input.get(CONF_NAME) or "").strip() or "Trafikinfo SE"
         scan_minutes = int(
             user_input.get(CONF_SCAN_INTERVAL, int(DEFAULT_SCAN_INTERVAL.total_seconds() / 60))
         )
         max_items = int(user_input.get(CONF_MAX_ITEMS, DEFAULT_MAX_ITEMS))
+        sort_mode = str(user_input.get(CONF_SORT_MODE, DEFAULT_SORT_MODE) or DEFAULT_SORT_MODE)
+        if sort_mode not in (SORT_MODE_RELEVANCE, SORT_MODE_NEAREST, SORT_MODE_NEWEST):
+            sort_mode = DEFAULT_SORT_MODE
         msg_types = user_input.get(CONF_MESSAGE_TYPES)
         if not isinstance(msg_types, list) or not msg_types:
             msg_types = list(DEFAULT_MESSAGE_TYPES)
-        return name, scan_minutes, max_items, list(msg_types)
+        return name, scan_minutes, max_items, sort_mode, list(msg_types)
 
     async def async_step_configure_coordinate(
         self, user_input: dict[str, Any] | None = None
@@ -428,7 +509,7 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.async_step_user()
 
         if user_input is not None:
-            name, scan_minutes, max_items, msg_types = self._finalize_common(user_input)
+            name, scan_minutes, max_items, sort_mode, msg_types = self._finalize_common(user_input)
             loc = user_input.get(CONF_LOCATION) or {}
             lat = float(loc.get("latitude", self.hass.config.latitude))
             lon = float(loc.get("longitude", self.hass.config.longitude))
@@ -441,31 +522,43 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_RADIUS_KM: radius_km,
                 CONF_SCAN_INTERVAL: scan_minutes,
                 CONF_MAX_ITEMS: max_items,
+                CONF_SORT_MODE: sort_mode,
                 CONF_MESSAGE_TYPES: msg_types,
             }
             return self.async_create_entry(title=name, data=data)
 
-        schema_dict: dict[vol.Marker, Any] = {
-            vol.Optional(
-                CONF_LOCATION,
-                default={
-                    "latitude": self.hass.config.latitude,
-                    "longitude": self.hass.config.longitude,
-                },
-            ): selector({"location": {}}),
-            vol.Optional(CONF_RADIUS_KM, default=DEFAULT_RADIUS_KM): selector(
-                {
-                    "number": {
-                        "min": 1,
-                        "max": 250,
-                        "step": 1,
-                        "unit_of_measurement": "km",
-                        "mode": "slider",
+        schema_dict: dict[vol.Marker, Any] = {}
+        schema_dict.update(self._schema_name("Trafikinfo SE"))
+        schema_dict.update(
+            {
+                vol.Optional(
+                    CONF_LOCATION,
+                    default={
+                        "latitude": self.hass.config.latitude,
+                        "longitude": self.hass.config.longitude,
+                    },
+                ): selector({"location": {}}),
+                vol.Optional(CONF_RADIUS_KM, default=DEFAULT_RADIUS_KM): selector(
+                    {
+                        "number": {
+                            "min": 1,
+                            "max": 250,
+                            "step": 1,
+                            "unit_of_measurement": "km",
+                            "mode": "slider",
+                        }
                     }
-                }
-            ),
-        }
-        schema_dict.update(self._common_schema(default_name="Trafikinfo SE"))
+                ),
+            }
+        )
+        schema_dict.update(
+            self._schema_common_tail(
+                default_scan_minutes=int(DEFAULT_SCAN_INTERVAL.total_seconds() / 60),
+                default_max_items=DEFAULT_MAX_ITEMS,
+                default_sort_mode=DEFAULT_SORT_MODE,
+                default_message_types=list(DEFAULT_MESSAGE_TYPES),
+            )
+        )
         return self.async_show_form(
             step_id="configure_coordinate", data_schema=vol.Schema(schema_dict)
         )
@@ -479,7 +572,7 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         errors: dict[str, str] = {}
         if user_input is not None:
-            name, scan_minutes, max_items, msg_types = self._finalize_common(user_input)
+            name, scan_minutes, max_items, sort_mode, msg_types = self._finalize_common(user_input)
             selected = user_input.get(CONF_COUNTIES)
             if not isinstance(selected, list) or not selected:
                 errors["base"] = "missing_counties"
@@ -491,12 +584,17 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     # If "Hela Sverige" is selected, normalize to only that value.
                     if COUNTY_ALL in counties:
                         counties = [COUNTY_ALL]
+                    sort_loc = user_input.get(CONF_SORT_LOCATION) or {}
+                    sort_lat = float(sort_loc.get("latitude", self.hass.config.latitude))
+                    sort_lon = float(sort_loc.get("longitude", self.hass.config.longitude))
                     data = {
                         CONF_API_KEY: self._api_key,
                         CONF_FILTER_MODE: FILTER_MODE_COUNTY,
                         CONF_COUNTIES: counties,
                         CONF_SCAN_INTERVAL: scan_minutes,
                         CONF_MAX_ITEMS: max_items,
+                        CONF_SORT_MODE: sort_mode,
+                        CONF_SORT_LOCATION: {"latitude": sort_lat, "longitude": sort_lon},
                         CONF_MESSAGE_TYPES: msg_types,
                     }
                     return self.async_create_entry(title=name, data=data)
@@ -504,12 +602,30 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         county_options = [{"label": "Hela Sverige", "value": COUNTY_ALL}] + [
             {"label": name, "value": code} for code, name in COUNTIES.items()
         ]
-        schema_dict: dict[vol.Marker, Any] = {
-            vol.Optional(CONF_COUNTIES, default=list(DEFAULT_COUNTIES)): selector(
-                {"select": {"options": county_options, "multiple": True, "mode": "list"}}
-            ),
-        }
-        schema_dict.update(self._common_schema(default_name="Trafikinfo SE"))
+        schema_dict: dict[vol.Marker, Any] = {}
+        schema_dict.update(self._schema_name("Trafikinfo SE"))
+        schema_dict.update(
+            {
+                vol.Optional(CONF_COUNTIES, default=list(DEFAULT_COUNTIES)): selector(
+                    {"select": {"options": county_options, "multiple": True, "mode": "list"}}
+                ),
+                vol.Optional(
+                    CONF_SORT_LOCATION,
+                    default={
+                        "latitude": self.hass.config.latitude,
+                        "longitude": self.hass.config.longitude,
+                    },
+                ): selector({"location": {}}),
+            }
+        )
+        schema_dict.update(
+            self._schema_common_tail(
+                default_scan_minutes=int(DEFAULT_SCAN_INTERVAL.total_seconds() / 60),
+                default_max_items=DEFAULT_MAX_ITEMS,
+                default_sort_mode=DEFAULT_SORT_MODE,
+                default_message_types=list(DEFAULT_MESSAGE_TYPES),
+            )
+        )
         return self.async_show_form(
             step_id="configure_counties", data_schema=vol.Schema(schema_dict), errors=errors
         )
@@ -575,6 +691,14 @@ class TrafikinfoSEOptionsFlowHandler(config_entries.OptionsFlow):
                 self._config_entry.data.get(CONF_MAX_ITEMS, DEFAULT_MAX_ITEMS),
             )
         )
+        default_sort_mode = str(
+            self._config_entry.options.get(
+                CONF_SORT_MODE,
+                self._config_entry.data.get(CONF_SORT_MODE, DEFAULT_SORT_MODE),
+            )
+        )
+        if default_sort_mode not in (SORT_MODE_RELEVANCE, SORT_MODE_NEAREST, SORT_MODE_NEWEST):
+            default_sort_mode = DEFAULT_SORT_MODE
         default_msg_types = self._config_entry.options.get(
             CONF_MESSAGE_TYPES,
             self._config_entry.data.get(CONF_MESSAGE_TYPES, DEFAULT_MESSAGE_TYPES),
@@ -585,33 +709,23 @@ class TrafikinfoSEOptionsFlowHandler(config_entries.OptionsFlow):
             "name": default_name,
             "scan_interval": default_scan,
             "max_items": default_max,
+            "sort_mode": default_sort_mode,
             "message_types": list(default_msg_types),
         }
 
-    def _common_schema(self, *, default_name: str, default_scan: int, default_max: int, default_msg_types: list[str]) -> dict[vol.Marker, Any]:
-        options = [{"label": s, "value": s} for s in DEFAULT_MESSAGE_TYPES]
-        return {
-            vol.Optional(CONF_NAME, default=default_name): str,
-            vol.Optional(CONF_SCAN_INTERVAL, default=default_scan): selector(
-                {
-                    "number": {
-                        "min": 1,
-                        "max": 120,
-                        "step": 1,
-                        "unit_of_measurement": "min",
-                        "mode": "box",
-                    }
-                }
-            ),
-            vol.Optional(CONF_MAX_ITEMS, default=default_max): selector(
-                {"number": {"min": 0, "max": 200, "step": 1, "mode": "box"}}
-            ),
-            vol.Optional(CONF_MESSAGE_TYPES, default=default_msg_types): selector(
-                {"select": {"options": options, "multiple": True, "mode": "list"}}
-            ),
-        }
+    def _sort_mode_selector(self) -> Any:
+        sort_mode_options = [
+            {"label": "Relevans (viktigt → närmast → nyast)", "value": SORT_MODE_RELEVANCE},
+            {"label": "Närmast", "value": SORT_MODE_NEAREST},
+            {"label": "Nyast", "value": SORT_MODE_NEWEST},
+        ]
+        return selector({"select": {"options": sort_mode_options, "mode": "dropdown"}})
 
-    def _finalize_common(self, user_input: dict[str, Any]) -> tuple[str | None, int, int, list[str]]:
+    def _message_types_selector(self) -> Any:
+        options = [{"label": s, "value": s} for s in DEFAULT_MESSAGE_TYPES]
+        return selector({"select": {"options": options, "multiple": True, "mode": "list"}})
+
+    def _finalize_common(self, user_input: dict[str, Any]) -> tuple[str | None, int, int, str, list[str]]:
         name = str(user_input.get(CONF_NAME) or "").strip()
         scan_minutes = int(
             user_input.get(
@@ -632,6 +746,17 @@ class TrafikinfoSEOptionsFlowHandler(config_entries.OptionsFlow):
                 ),
             )
         )
+        sort_mode = str(
+            user_input.get(
+                CONF_SORT_MODE,
+                self._config_entry.options.get(
+                    CONF_SORT_MODE, self._config_entry.data.get(CONF_SORT_MODE, DEFAULT_SORT_MODE)
+                ),
+            )
+            or DEFAULT_SORT_MODE
+        )
+        if sort_mode not in (SORT_MODE_RELEVANCE, SORT_MODE_NEAREST, SORT_MODE_NEWEST):
+            sort_mode = DEFAULT_SORT_MODE
         msg_types = user_input.get(CONF_MESSAGE_TYPES)
         if not isinstance(msg_types, list) or not msg_types:
             msg_types = list(
@@ -642,7 +767,7 @@ class TrafikinfoSEOptionsFlowHandler(config_entries.OptionsFlow):
             )
         if not msg_types:
             msg_types = list(DEFAULT_MESSAGE_TYPES)
-        return (name or None), scan_minutes, max_items, list(msg_types)
+        return (name or None), scan_minutes, max_items, sort_mode, list(msg_types)
 
     async def async_step_coordinate(self, user_input: dict[str, Any] | None = None):
         """Options: configure coordinate+radius."""
@@ -672,7 +797,7 @@ class TrafikinfoSEOptionsFlowHandler(config_entries.OptionsFlow):
 
         if user_input is not None:
             data = dict(self._config_entry.options)
-            name, scan_minutes, max_items, msg_types = self._finalize_common(user_input)
+            name, scan_minutes, max_items, sort_mode, msg_types = self._finalize_common(user_input)
             if name and name != (self._config_entry.title or ""):
                 self.hass.config_entries.async_update_entry(self._config_entry, title=name)
             loc = user_input.get(CONF_LOCATION) or {}
@@ -687,12 +812,14 @@ class TrafikinfoSEOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_RADIUS_KM: radius_km,
                     CONF_SCAN_INTERVAL: scan_minutes,
                     CONF_MAX_ITEMS: max_items,
+                    CONF_SORT_MODE: sort_mode,
                     CONF_MESSAGE_TYPES: list(msg_types),
                 }
             )
             return self.async_create_entry(title="", data=data)
 
         schema_dict: dict[vol.Marker, Any] = {
+            vol.Optional(CONF_NAME, default=common["name"]): str,
             vol.Optional(CONF_LOCATION, default=default_location): selector({"location": {}}),
             vol.Optional(CONF_RADIUS_KM, default=default_radius): selector(
                 {
@@ -705,15 +832,23 @@ class TrafikinfoSEOptionsFlowHandler(config_entries.OptionsFlow):
                     }
                 }
             ),
+            vol.Optional(CONF_SORT_MODE, default=common["sort_mode"]): self._sort_mode_selector(),
+            vol.Optional(CONF_MESSAGE_TYPES, default=common["message_types"]): self._message_types_selector(),
+            vol.Optional(CONF_MAX_ITEMS, default=common["max_items"]): selector(
+                {"number": {"min": 0, "max": 200, "step": 1, "mode": "box"}}
+            ),
+            vol.Optional(CONF_SCAN_INTERVAL, default=common["scan_interval"]): selector(
+                {
+                    "number": {
+                        "min": 1,
+                        "max": 120,
+                        "step": 1,
+                        "unit_of_measurement": "min",
+                        "mode": "box",
+                    }
+                }
+            ),
         }
-        schema_dict.update(
-            self._common_schema(
-                default_name=common["name"],
-                default_scan=common["scan_interval"],
-                default_max=common["max_items"],
-                default_msg_types=common["message_types"],
-            )
-        )
         return self.async_show_form(step_id="coordinate", data_schema=vol.Schema(schema_dict))
 
     async def async_step_counties(self, user_input: dict[str, Any] | None = None):
@@ -725,11 +860,20 @@ class TrafikinfoSEOptionsFlowHandler(config_entries.OptionsFlow):
         )
         if not isinstance(default_counties, list):
             default_counties = list(DEFAULT_COUNTIES)
+        default_sort_location = self._config_entry.options.get(
+            CONF_SORT_LOCATION,
+            self._config_entry.data.get(
+                CONF_SORT_LOCATION,
+                {"latitude": self.hass.config.latitude, "longitude": self.hass.config.longitude},
+            ),
+        )
+        if not isinstance(default_sort_location, dict):
+            default_sort_location = {"latitude": self.hass.config.latitude, "longitude": self.hass.config.longitude}
 
         errors: dict[str, str] = {}
         if user_input is not None:
             data = dict(self._config_entry.options)
-            name, scan_minutes, max_items, msg_types = self._finalize_common(user_input)
+            name, scan_minutes, max_items, sort_mode, msg_types = self._finalize_common(user_input)
             if name and name != (self._config_entry.title or ""):
                 self.hass.config_entries.async_update_entry(self._config_entry, title=name)
             selected = user_input.get(CONF_COUNTIES)
@@ -742,12 +886,17 @@ class TrafikinfoSEOptionsFlowHandler(config_entries.OptionsFlow):
                 else:
                     if COUNTY_ALL in counties:
                         counties = [COUNTY_ALL]
+                    sort_loc = user_input.get(CONF_SORT_LOCATION) or {}
+                    sort_lat = float(sort_loc.get("latitude", self.hass.config.latitude))
+                    sort_lon = float(sort_loc.get("longitude", self.hass.config.longitude))
                     data.update(
                         {
                             CONF_FILTER_MODE: FILTER_MODE_COUNTY,
                             CONF_COUNTIES: counties,
                             CONF_SCAN_INTERVAL: scan_minutes,
                             CONF_MAX_ITEMS: max_items,
+                            CONF_SORT_MODE: sort_mode,
+                            CONF_SORT_LOCATION: {"latitude": sort_lat, "longitude": sort_lon},
                             CONF_MESSAGE_TYPES: list(msg_types),
                         }
                     )
@@ -757,18 +906,28 @@ class TrafikinfoSEOptionsFlowHandler(config_entries.OptionsFlow):
             {"label": name, "value": code} for code, name in COUNTIES.items()
         ]
         schema_dict: dict[vol.Marker, Any] = {
+            vol.Optional(CONF_NAME, default=common["name"]): str,
             vol.Optional(CONF_COUNTIES, default=list(default_counties)): selector(
                 {"select": {"options": county_options, "multiple": True, "mode": "list"}}
             ),
+            vol.Optional(CONF_SORT_LOCATION, default=default_sort_location): selector({"location": {}}),
+            vol.Optional(CONF_SORT_MODE, default=common["sort_mode"]): self._sort_mode_selector(),
+            vol.Optional(CONF_MESSAGE_TYPES, default=common["message_types"]): self._message_types_selector(),
+            vol.Optional(CONF_MAX_ITEMS, default=common["max_items"]): selector(
+                {"number": {"min": 0, "max": 200, "step": 1, "mode": "box"}}
+            ),
+            vol.Optional(CONF_SCAN_INTERVAL, default=common["scan_interval"]): selector(
+                {
+                    "number": {
+                        "min": 1,
+                        "max": 120,
+                        "step": 1,
+                        "unit_of_measurement": "min",
+                        "mode": "box",
+                    }
+                }
+            ),
         }
-        schema_dict.update(
-            self._common_schema(
-                default_name=common["name"],
-                default_scan=common["scan_interval"],
-                default_max=common["max_items"],
-                default_msg_types=common["message_types"],
-            )
-        )
         return self.async_show_form(step_id="counties", data_schema=vol.Schema(schema_dict), errors=errors)
 
 

@@ -234,11 +234,20 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
             return attrs
 
         filtered = self._filtered_events()
+        sorted_events = self.coordinator.sort_events(filtered)
         max_items = max(0, int(self.coordinator.max_items))
         if max_items == 0:
             events = []
         else:
-            events = [e.as_dict() for e in filtered[:max_items]]
+            out = []
+            for e in sorted_events[:max_items]:
+                d = e.as_dict()
+                dist = self.coordinator.event_distance_km(e)
+                if dist is not None:
+                    # Rounded for readability in dashboards
+                    d["distance_km"] = round(float(dist), 2)
+                out.append(d)
+            events = out
 
         # Expose a simple icon URL surface for dashboards/templates.
         # Note: we intentionally do not set the HA `entity_picture` property anymore
@@ -261,6 +270,11 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
                 "filter_radius_km": getattr(self.coordinator, "radius_km", None)
                 if getattr(self.coordinator, "filter_mode", None) == "coordinate"
                 else None,
+                "sort_mode": getattr(self.coordinator, "sort_mode", None),
+                "sort_reference": {
+                    "latitude": getattr(self.coordinator, "sort_latitude", None),
+                    "longitude": getattr(self.coordinator, "sort_longitude", None),
+                },
                 "entity_picture": entity_picture_attr,
                 "icon_url": picture_url,
                 "events": events,

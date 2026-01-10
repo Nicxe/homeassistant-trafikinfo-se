@@ -24,6 +24,7 @@
           "name": "Name",
           "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",
+          "sort_mode": "Selection / sorting",
           "message_types": "Message types (categories)"
         }
       },
@@ -32,9 +33,11 @@
         "description": "Filter events by one or more counties (or Sweden-wide).",
         "data": {
           "counties": "Counties",
+          "sort_location": "Reference position (for selection/sorting)",
           "name": "Name",
           "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",
+          "sort_mode": "Selection / sorting",
           "message_types": "Message types (categories)"
         }
       },
@@ -54,6 +57,7 @@
           "name": "Name",
           "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",
+          "sort_mode": "Selection / sorting",
           "message_types": "Message types (categories)"
         }
       },
@@ -62,9 +66,11 @@
         "description": "Update county filtering (or Sweden-wide).",
         "data": {
           "counties": "Counties",
+          "sort_location": "Reference position (for selection/sorting)",
           "name": "Name",
           "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",
+          "sort_mode": "Selection / sorting",
           "message_types": "Message types (categories)"
         }
       }
@@ -94,6 +100,7 @@
           "name": "Name",
           "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",
+          "sort_mode": "Selection / sorting",
           "message_types": "Message types (categories)"
         }
       },
@@ -102,9 +109,11 @@
         "description": "Update county filtering (or Sweden-wide).",
         "data": {
           "counties": "Counties",
+          "sort_location": "Reference position (for selection/sorting)",
           "name": "Name",
           "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",
+          "sort_mode": "Selection / sorting",
           "message_types": "Message types (categories)"
         }
       }
