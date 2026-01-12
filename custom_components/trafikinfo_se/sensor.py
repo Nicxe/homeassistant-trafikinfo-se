@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import logging
 from typing import Any
 from urllib.parse import quote
 
@@ -11,6 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 
 from .const import (
@@ -20,6 +23,8 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import TrafikinfoCoordinator, TrafikinfoData
+
+_LOGGER = logging.getLogger(__name__)
 
 MESSAGE_TYPES: list[str] = [
     "Viktig trafikinformation",
@@ -171,6 +176,7 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
     # Use full friendly names directly (no device-name prefix).
     _attr_has_entity_name = False
     _attr_state_class = SensorStateClass.MEASUREMENT
+    _EVENT_PUBLISH_TYPES = {"Hinder", "Olycka"}
 
     def __init__(
         self,
@@ -188,6 +194,15 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
         }
         self._attr_name = display_name_map.get(message_type, message_type)
         self._attr_icon = MESSAGE_TYPE_ICONS.get(message_type, "mdi:traffic-cone")
+        self._incident_bus_name: str | None = None
+        self._diff_initialized: bool = False
+        # incident_key -> signature (used to detect new/changed incidents)
+        self._last_incident_signatures: dict[str, str] = {}
+        if self._message_type in self._EVENT_PUBLISH_TYPES:
+            # Per-incident event (fires once per new/changed incident)
+            # - trafikinfo_se_hinder_incident
+            # - trafikinfo_se_olycka_incident
+            self._incident_bus_name = f"{DOMAIN}_{slugify(self._message_type)}_incident"
 
     @property
     def suggested_object_id(self) -> str | None:
@@ -219,6 +234,106 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
             if _category_for_event(e) == self._message_type:
                 out.append(e)
         return out
+
+    def _incident_key(self, event: Any) -> str | None:
+        """Stable key for one incident."""
+        dev_id = getattr(event, "deviation_id", None)
+        if isinstance(dev_id, str) and dev_id:
+            return dev_id
+        sit_id = getattr(event, "situation_id", None)
+        if isinstance(sit_id, str) and sit_id:
+            return sit_id
+        # Fallback: this should be rare, but avoid crashing.
+        msg = getattr(event, "message", None)
+        head = getattr(event, "header", None)
+        if isinstance(msg, str) and msg:
+            return hashlib.sha1(f"{head}|{msg}".encode("utf-8")).hexdigest()
+        return None
+
+    def _incident_signature(self, event: Any) -> str:
+        """Signature that changes when an incident changes."""
+        # Prefer timestamps that usually change on updates.
+        parts: list[str] = []
+        for attr in ("modified_time", "version_time", "publication_time", "end_time", "start_time"):
+            v = getattr(event, attr, None)
+            try:
+                parts.append(v.isoformat() if hasattr(v, "isoformat") else str(v))
+            except Exception:
+                parts.append(str(v))
+        # Include key text to catch changes even if timestamps are missing.
+        for attr in ("severity_code", "severity_text", "message_type", "message_type_value", "header", "message"):
+            v = getattr(event, attr, None)
+            parts.append(str(v) if v is not None else "")
+        return "|".join(parts)
+
+    def _incident_dict(self, event: Any) -> dict[str, Any]:
+        """Convert one incident to dict including distance_km if available."""
+        try:
+            d = event.as_dict() if hasattr(event, "as_dict") else {}
+        except Exception:
+            d = {}
+        dist = self.coordinator.event_distance_km(event)
+        if dist is not None:
+            d["distance_km"] = round(float(dist), 2)
+        return d
+
+    def _maybe_fire_event(self) -> None:
+        """Publish one event per new/changed incident (hinder/olycka only)."""
+        if not self._incident_bus_name:
+            return
+        data: TrafikinfoData | None = self.coordinator.data
+        if not data:
+            return
+
+        filtered = self._filtered_events()
+        cur: dict[str, str] = {}
+        cur_events_by_key: dict[str, Any] = {}
+        for e in filtered:
+            k = self._incident_key(e)
+            if not k:
+                continue
+            cur_events_by_key[k] = e
+            cur[k] = self._incident_signature(e)
+
+        if not self._diff_initialized:
+            # Avoid startup spam: establish baseline on first publish.
+            self._diff_initialized = True
+            self._last_incident_signatures = cur
+            return
+
+        prev = self._last_incident_signatures
+        added_or_changed: list[str] = []
+        for k, sig in cur.items():
+            if k not in prev or prev.get(k) != sig:
+                added_or_changed.append(k)
+
+        received_at = dt_util.utcnow().isoformat(timespec="seconds")
+        # Fire one event per new/changed incident (most useful for notifications).
+        for k in added_or_changed[:200]:
+            e = cur_events_by_key.get(k)
+            if e is None:
+                continue
+            payload = {
+                "entry_id": self._entry.entry_id,
+                "entry_title": self._entry.title,
+                "entity_id": getattr(self, "entity_id", None),
+                "message_type": self._message_type,
+                "incident_key": k,
+                "change_type": "added" if k not in prev else "updated",
+                "received_at": received_at,
+                "incident": self._incident_dict(e),
+            }
+            try:
+                self.hass.bus.async_fire(self._incident_bus_name, payload)
+            except Exception:
+                _LOGGER.debug("Failed to publish %s incident", self._incident_bus_name)
+
+        self._last_incident_signatures = cur
+
+    def _handle_coordinator_update(self) -> None:
+        # Fire event before writing state so listeners can react immediately to the update.
+        self._maybe_fire_event()
+        super()._handle_coordinator_update()
 
     @property
     def native_value(self) -> int | None:
