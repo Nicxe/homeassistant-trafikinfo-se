@@ -1,1 +1,3 @@
 .DS_Store
+node_modules/
+custom_components/trafikinfo_se.zip

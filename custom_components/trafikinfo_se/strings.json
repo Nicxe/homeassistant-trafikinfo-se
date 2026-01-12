@@ -8,14 +8,73 @@
           "api_key": "API key"
         }
       },
-      "options": {
+      "filter_mode": {
         "title": "Trafikinfo SE",
-        "description": "Select which categories to create sensors for and configure update interval.",
+        "description": "Choose how you want to filter traffic information.",
+        "data": {
+          "filter_mode": "Filter mode"
+        }
+      },
+      "configure_coordinate": {
+        "title": "Trafikinfo SE",
+        "description": "Filter events within a radius around a coordinate.",
         "data": {
           "location": "Center position",
           "radius_km": "Radius (km)",
+          "filter_roads": "Road filter (road numbers/names)",
+          "name": "Name",
           "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",
+          "sort_mode": "Selection / sorting",
+          "message_types": "Message types (categories)"
+        }
+      },
+      "configure_counties": {
+        "title": "Trafikinfo SE",
+        "description": "Filter events by one or more counties (or Sweden-wide).",
+        "data": {
+          "counties": "Counties",
+          "sort_location": "Reference position (for selection/sorting)",
+          "filter_roads": "Road filter (road numbers/names)",
+          "name": "Name",
+          "scan_interval": "Update interval (minutes)",
+          "max_items": "Max items in attributes",
+          "sort_mode": "Selection / sorting",
+          "message_types": "Message types (categories)"
+        }
+      },
+      "reconfigure_filter_mode": {
+        "title": "Trafikinfo SE",
+        "description": "Choose how you want to filter traffic information.",
+        "data": {
+          "filter_mode": "Filter mode"
+        }
+      },
+      "reconfigure_coordinate": {
+        "title": "Trafikinfo SE",
+        "description": "Update coordinate and radius filtering.",
+        "data": {
+          "location": "Center position",
+          "radius_km": "Radius (km)",
+          "filter_roads": "Road filter (road numbers/names)",
+          "name": "Name",
+          "scan_interval": "Update interval (minutes)",
+          "max_items": "Max items in attributes",
+          "sort_mode": "Selection / sorting",
+          "message_types": "Message types (categories)"
+        }
+      },
+      "reconfigure_counties": {
+        "title": "Trafikinfo SE",
+        "description": "Update county filtering (or Sweden-wide).",
+        "data": {
+          "counties": "Counties",
+          "sort_location": "Reference position (for selection/sorting)",
+          "filter_roads": "Road filter (road numbers/names)",
+          "name": "Name",
+          "scan_interval": "Update interval (minutes)",
+          "max_items": "Max items in attributes",
+          "sort_mode": "Selection / sorting",
           "message_types": "Message types (categories)"
         }
       }
@@ -23,6 +82,7 @@
     "error": {
       "cannot_connect": "Failed to connect.",
       "invalid_auth": "Invalid API key.",
+      "missing_counties": "Select at least one county (or 'Sweden').",
       "unknown": "Unexpected error."
     }
   },
@@ -30,15 +90,42 @@
     "step": {
       "init": {
         "title": "Trafikinfo SE options",
-        "description": "Configure polling interval, which message types to create sensors for, and how many items to expose in attributes.",
+        "description": "Choose how you want to filter traffic information.",
+        "data": {
+          "filter_mode": "Filter mode"
+        }
+      },
+      "coordinate": {
+        "title": "Trafikinfo SE options",
+        "description": "Update coordinate and radius filtering.",
         "data": {
           "location": "Center position",
           "radius_km": "Radius (km)",
+          "filter_roads": "Road filter (road numbers/names)",
+          "name": "Name",
           "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",
+          "sort_mode": "Selection / sorting",
+          "message_types": "Message types (categories)"
+        }
+      },
+      "counties": {
+        "title": "Trafikinfo SE options",
+        "description": "Update county filtering (or Sweden-wide).",
+        "data": {
+          "counties": "Counties",
+          "sort_location": "Reference position (for selection/sorting)",
+          "filter_roads": "Road filter (road numbers/names)",
+          "name": "Name",
+          "scan_interval": "Update interval (minutes)",
+          "max_items": "Max items in attributes",
+          "sort_mode": "Selection / sorting",
           "message_types": "Message types (categories)"
         }
       }
+    },
+    "error": {
+      "missing_counties": "Select at least one county (or 'Sweden')."
     }
   }
 }

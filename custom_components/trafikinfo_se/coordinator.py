@@ -22,16 +22,29 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_API_KEY,
+    CONF_COUNTIES,
+    CONF_FILTER_MODE,
+    CONF_FILTER_ROADS,
     CONF_LATITUDE,
     CONF_LONGITUDE,
     CONF_MAX_ITEMS,
     CONF_RADIUS_KM,
     CONF_SCAN_INTERVAL,
+    CONF_SORT_LOCATION,
+    CONF_SORT_MODE,
+    COUNTY_ALL,
     DEFAULT_RADIUS_KM,
+    DEFAULT_FILTER_MODE,
     DEFAULT_MAX_ITEMS,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_SORT_MODE,
     DOMAIN,
+    FILTER_MODE_COORDINATE,
+    FILTER_MODE_COUNTY,
     SITUATION_SCHEMA_VERSION,
+    SORT_MODE_NEAREST,
+    SORT_MODE_NEWEST,
+    SORT_MODE_RELEVANCE,
     TRAFIKVERKET_DATACACHE_URL,
     TRAFIKVERKET_ICONS_BASE_URL,
     TRAFIKVERKET_ICON_V2_URL_PREFIX,
@@ -369,12 +382,56 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
         self._max_items = int(
             entry.options.get(CONF_MAX_ITEMS, entry.data.get(CONF_MAX_ITEMS, DEFAULT_MAX_ITEMS))
         )
+        self._filter_roads: list[str] = []
+        raw_roads = entry.options.get(CONF_FILTER_ROADS, entry.data.get(CONF_FILTER_ROADS, []))
+        if isinstance(raw_roads, str):
+            parts: list[str] = []
+            for chunk in raw_roads.split(";"):
+                parts.extend(chunk.split(","))
+            raw_roads = parts
+        if isinstance(raw_roads, list):
+            self._filter_roads = [str(x).strip() for x in raw_roads if str(x).strip()]
+        self._sort_mode = str(
+            entry.options.get(CONF_SORT_MODE, entry.data.get(CONF_SORT_MODE, DEFAULT_SORT_MODE))
+        )
+        if self._sort_mode not in (SORT_MODE_RELEVANCE, SORT_MODE_NEAREST, SORT_MODE_NEWEST):
+            self._sort_mode = DEFAULT_SORT_MODE
+        self._filter_mode = str(
+            entry.options.get(CONF_FILTER_MODE, entry.data.get(CONF_FILTER_MODE, DEFAULT_FILTER_MODE))
+        )
+        if self._filter_mode not in (FILTER_MODE_COORDINATE, FILTER_MODE_COUNTY):
+            # Backward compatibility for earlier values (e.g. "sweden") or unknown values.
+            self._filter_mode = FILTER_MODE_COUNTY
+        self._counties: set[str] = set()
+        raw_counties = entry.options.get(CONF_COUNTIES, entry.data.get(CONF_COUNTIES, []))
+        if isinstance(raw_counties, list):
+            self._counties = {str(x) for x in raw_counties if str(x).strip()}
+        # If mode is county but counties is empty, default to Sweden-wide.
+        if self._filter_mode == FILTER_MODE_COUNTY and not self._counties:
+            self._counties = {COUNTY_ALL}
         self._latitude = float(
             entry.options.get(CONF_LATITUDE, entry.data.get(CONF_LATITUDE, hass.config.latitude))
         )
         self._longitude = float(
             entry.options.get(CONF_LONGITUDE, entry.data.get(CONF_LONGITUDE, hass.config.longitude))
         )
+        # Sorting reference point:
+        # - Coordinate mode: uses the configured center (lat/lon)
+        # - County mode: defaults to HA home location, but can be overridden via sort_location
+        self._sort_latitude = float(hass.config.latitude)
+        self._sort_longitude = float(hass.config.longitude)
+        if self._filter_mode == FILTER_MODE_COORDINATE:
+            self._sort_latitude = float(self._latitude)
+            self._sort_longitude = float(self._longitude)
+        else:
+            sort_loc = entry.options.get(CONF_SORT_LOCATION, entry.data.get(CONF_SORT_LOCATION))
+            if isinstance(sort_loc, dict):
+                try:
+                    self._sort_latitude = float(sort_loc.get("latitude", hass.config.latitude))
+                    self._sort_longitude = float(sort_loc.get("longitude", hass.config.longitude))
+                except (TypeError, ValueError):
+                    self._sort_latitude = float(hass.config.latitude)
+                    self._sort_longitude = float(hass.config.longitude)
         self._radius_km = float(
             entry.options.get(CONF_RADIUS_KM, entry.data.get(CONF_RADIUS_KM, DEFAULT_RADIUS_KM))
         )
@@ -400,8 +457,33 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
         return self._api_key
 
     @property
+    def filter_mode(self) -> str:
+        return self._filter_mode
+
+    @property
+    def counties(self) -> list[str]:
+        # Stable ordering for UI/attributes
+        return sorted(self._counties)
+
+    @property
     def max_items(self) -> int:
         return self._max_items
+
+    @property
+    def filter_roads(self) -> list[str]:
+        return list(self._filter_roads)
+
+    @property
+    def sort_mode(self) -> str:
+        return self._sort_mode
+
+    @property
+    def sort_latitude(self) -> float:
+        return self._sort_latitude
+
+    @property
+    def sort_longitude(self) -> float:
+        return self._sort_longitude
 
     @property
     def latitude(self) -> float:
@@ -417,6 +499,36 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
 
     def apply_options(self) -> None:
         """Apply updated options from the config entry."""
+        raw_roads = self._entry.options.get(CONF_FILTER_ROADS, self._entry.data.get(CONF_FILTER_ROADS, []))
+        if isinstance(raw_roads, str):
+            parts: list[str] = []
+            for chunk in raw_roads.split(";"):
+                parts.extend(chunk.split(","))
+            raw_roads = parts
+        if isinstance(raw_roads, list):
+            self._filter_roads = [str(x).strip() for x in raw_roads if str(x).strip()]
+        else:
+            self._filter_roads = []
+        self._sort_mode = str(
+            self._entry.options.get(CONF_SORT_MODE, self._entry.data.get(CONF_SORT_MODE, DEFAULT_SORT_MODE))
+        )
+        if self._sort_mode not in (SORT_MODE_RELEVANCE, SORT_MODE_NEAREST, SORT_MODE_NEWEST):
+            self._sort_mode = DEFAULT_SORT_MODE
+        self._filter_mode = str(
+            self._entry.options.get(
+                CONF_FILTER_MODE,
+                self._entry.data.get(CONF_FILTER_MODE, DEFAULT_FILTER_MODE),
+            )
+        )
+        if self._filter_mode not in (FILTER_MODE_COORDINATE, FILTER_MODE_COUNTY):
+            self._filter_mode = FILTER_MODE_COUNTY
+        self._counties = set()
+        raw_counties = self._entry.options.get(CONF_COUNTIES, self._entry.data.get(CONF_COUNTIES, []))
+        if isinstance(raw_counties, list):
+            self._counties = {str(x) for x in raw_counties if str(x).strip()}
+        if self._filter_mode == FILTER_MODE_COUNTY and not self._counties:
+            self._counties = {COUNTY_ALL}
+
         scan_minutes = int(
             self._entry.options.get(
                 CONF_SCAN_INTERVAL,
@@ -447,6 +559,160 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
                 CONF_RADIUS_KM, self._entry.data.get(CONF_RADIUS_KM, DEFAULT_RADIUS_KM)
             )
         )
+        # Recompute sorting reference point
+        if self._filter_mode == FILTER_MODE_COORDINATE:
+            self._sort_latitude = float(self._latitude)
+            self._sort_longitude = float(self._longitude)
+        else:
+            sort_loc = self._entry.options.get(CONF_SORT_LOCATION, self._entry.data.get(CONF_SORT_LOCATION))
+            if isinstance(sort_loc, dict):
+                try:
+                    self._sort_latitude = float(sort_loc.get("latitude", self.hass.config.latitude))
+                    self._sort_longitude = float(sort_loc.get("longitude", self.hass.config.longitude))
+                except (TypeError, ValueError):
+                    self._sort_latitude = float(self.hass.config.latitude)
+                    self._sort_longitude = float(self.hass.config.longitude)
+            else:
+                self._sort_latitude = float(self.hass.config.latitude)
+                self._sort_longitude = float(self.hass.config.longitude)
+
+    def _is_important_without_geo(self, event: TrafikinfoEvent) -> bool:
+        if event.safety_related_message is True:
+            return True
+        if event.message_type == "Viktig trafikinformation":
+            return True
+        return False
+
+    def _normalize_road_filter_token(self, value: str) -> str:
+        s = (value or "").strip().lower()
+        if not s:
+            return ""
+        # Allow user-friendly inputs like "Väg 163" / "Road 163" by stripping the prefix.
+        s = re.sub(r"^(väg|vag|road)\s+", "", s, flags=re.IGNORECASE)
+        # Normalize whitespace
+        s = re.sub(r"\s+", " ", s).strip()
+        return s
+
+    def _road_filter_match(self, event: TrafikinfoEvent, tokens: list[str]) -> bool:
+        if not tokens:
+            return True
+        road_text = f"{event.road_name or ''} {event.road_number or ''}".lower()
+        road_no = (event.road_number or "").strip().lower()
+        for t in tokens:
+            if not t:
+                continue
+            if road_no and t == road_no:
+                return True
+            if t in road_text:
+                return True
+        return False
+
+    def _apply_road_filter(self, events: list[TrafikinfoEvent]) -> list[TrafikinfoEvent]:
+        """Apply road filter, but never drop important safety/national messages."""
+        if not self._filter_roads:
+            return events
+        tokens = [self._normalize_road_filter_token(x) for x in self._filter_roads]
+        tokens = [t for t in tokens if t]
+        if not tokens:
+            return events
+        out: list[TrafikinfoEvent] = []
+        for e in events:
+            if self._is_important_without_geo(e):
+                out.append(e)
+                continue
+            if self._road_filter_match(e, tokens):
+                out.append(e)
+        return out
+
+    def event_distance_km(self, event: TrafikinfoEvent) -> float | None:
+        """Compute min distance (km) from sorting reference to event geometry."""
+        if not event.geometry_wgs84:
+            return None
+        pts = self._wkt_points(event.geometry_wgs84)
+        if not pts:
+            return None
+        center_lon = float(self._sort_longitude)
+        center_lat = float(self._sort_latitude)
+        best: float | None = None
+        for lon, lat in pts[:200]:  # cap work for huge geometries
+            d = self._haversine_km(center_lon, center_lat, lon, lat)
+            if best is None or d < best:
+                best = d
+        return best
+
+    def sort_events(self, events: list[TrafikinfoEvent]) -> list[TrafikinfoEvent]:
+        """Sort events according to configured sort_mode."""
+        if not events:
+            return []
+
+        def _pub_ts(e: TrafikinfoEvent) -> float:
+            pub = e.publication_time
+            if not isinstance(pub, datetime):
+                return 0.0
+            try:
+                return float(pub.timestamp())
+            except Exception:
+                return 0.0
+
+        if self._sort_mode == SORT_MODE_NEWEST:
+            # Already newest-first globally, but filter may disturb ordering in future;
+            # make it explicit and stable.
+            def _k_newest(e: TrafikinfoEvent):
+                return (
+                    e.publication_time or datetime.min.replace(tzinfo=dt_util.UTC),
+                    e.situation_id or "",
+                    e.deviation_id or "",
+                )
+
+            return sorted(events, key=_k_newest, reverse=True)
+
+        # Nearest / relevance need distances. Cache per call (avoid recompute per key element).
+        dist_cache: dict[tuple[str | None, str | None], float | None] = {}
+
+        def _dist(e: TrafikinfoEvent) -> float | None:
+            key = (e.situation_id, e.deviation_id)
+            if key in dist_cache:
+                return dist_cache[key]
+            dist_cache[key] = self.event_distance_km(e)
+            return dist_cache[key]
+
+        def _k_nearest(e: TrafikinfoEvent):
+            d = _dist(e)
+            missing = 1 if d is None else 0  # known distances first
+            dval = float(d) if d is not None else float("inf")
+            # Newest first as tie-breaker
+            return (missing, dval, -_pub_ts(e), e.situation_id or "", e.deviation_id or "")
+
+        if self._sort_mode == SORT_MODE_NEAREST:
+            return sorted(events, key=_k_nearest, reverse=False)
+
+        # Default: relevance (important first, then nearest, then newest)
+        def _k_relevance(e: TrafikinfoEvent):
+            important = 0 if self._is_important_without_geo(e) else 1
+            d = _dist(e)
+            missing = 1 if d is None else 0
+            dval = float(d) if d is not None else float("inf")
+            # Newest first within same bucket:
+            return (important, missing, dval, -_pub_ts(e), e.situation_id or "", e.deviation_id or "")
+
+        return sorted(events, key=_k_relevance, reverse=False)
+
+    def _in_counties(self, event: TrafikinfoEvent) -> bool:
+        if COUNTY_ALL in self._counties:
+            return True
+        if not self._counties:
+            return False
+        if not event.county_no:
+            return self._is_important_without_geo(event)
+        for c in event.county_no:
+            if str(c) in self._counties:
+                return True
+        return False
+
+    def _include_event(self, event: TrafikinfoEvent) -> bool:
+        if self._filter_mode == FILTER_MODE_COUNTY:
+            return self._in_counties(event)
+        return self._in_radius(event)
 
     def get_local_icon_url(self, icon_id: str | None) -> str | None:
         if not icon_id:
@@ -608,11 +874,7 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
     def _in_radius(self, event: TrafikinfoEvent) -> bool:
         # Include important unlocated messages (often national) to avoid missing safety info.
         if not event.geometry_wgs84:
-            if event.safety_related_message is True:
-                return True
-            if event.message_type == "Viktig trafikinformation":
-                return True
-            return False
+            return self._is_important_without_geo(event)
 
         pts = self._wkt_points(event.geometry_wgs84)
         if not pts:
@@ -652,7 +914,8 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
             raise UpdateFailed(f"Error fetching Trafikverket data: {err}") from err
 
         data = _parse_response(text)
-        filtered = [e for e in data.events if self._in_radius(e)]
+        filtered = [e for e in data.events if self._include_event(e)]
+        filtered = self._apply_road_filter(filtered)
         # Best-effort local icon caching for picture cards
         icon_ids = [e.icon_id for e in filtered if e.icon_id]
         try:
@@ -661,10 +924,12 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
         except Exception as err:
             _LOGGER.debug("Icon caching failed: %s", err)
         _LOGGER.debug(
-            "Geo filter: center=(%.5f,%.5f) radius_km=%.1f events_before=%s events_after=%s",
+            "Filter: mode=%s center=(%.5f,%.5f) radius_km=%.1f counties=%s events_before=%s events_after=%s",
+            self._filter_mode,
             self._latitude,
             self._longitude,
             self._radius_km,
+            sorted(self._counties),
             len(data.events),
             len(filtered),
         )

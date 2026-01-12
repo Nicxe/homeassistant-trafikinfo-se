@@ -1,4 +1,4 @@
-name: Release
+name: release
 
 on:
   push:
@@ -6,23 +6,36 @@ on:
       - main
       - beta
 
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  packages: read
+
 jobs:
   release:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
-
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          node-version: 20
+          fetch-depth: 0
+          fetch-tags: true
 
-      - run: npm ci
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@nicxe"
 
-      - run: npx semantic-release
+      - name: Install
+        run: npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Semantic Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release
