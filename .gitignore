@@ -2,3 +2,4 @@
 node_modules/
 custom_components/trafikinfo_se.zip
 custom_components/trafikinfo_se/.vscode/settings.json
+custom_components/trafikinfo_se/releasenote.md

@@ -856,6 +856,14 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
         ):
             await self._ensure_icon_cached(icon_id)
 
+    async def _cache_icons_background(self, icon_ids: list[str]) -> None:
+        """Cache icons in background task to not block coordinator updates."""
+        try:
+            await self._ensure_icons_cached(icon_ids)
+            await self._ensure_category_icons_cached()
+        except Exception as err:
+            _LOGGER.debug("Icon caching failed: %s", err)
+
     def _wkt_points(self, wkt: str | None) -> list[tuple[float, float]]:
         """Extract lon/lat points from common WKT shapes (POINT/LINESTRING/etc)."""
         if not isinstance(wkt, str):
@@ -943,28 +951,27 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
                         raise TrafikinfoAPIError(
                             f"Trafikverket API returned HTTP {resp.status}: {text[:300]}"
                         )
-        except TrafikinfoError:
-            raise UpdateFailed from None
-        except asyncio.TimeoutError as err:
-            raise TrafikinfoConnectionError("Request timeout") from err
+        except TrafikinfoError as err:
+            raise UpdateFailed(str(err)) from err
+        except asyncio.TimeoutError:
+            raise UpdateFailed("Request timeout - Trafikverket API not responding") from None
         except aiohttp.ClientError as err:
-            raise TrafikinfoConnectionError(f"Connection error: {err}") from err
+            raise UpdateFailed(f"Connection error: {err}") from err
         except Exception as err:
             raise UpdateFailed(f"Unexpected error fetching Trafikverket data: {err}") from err
 
         try:
             data = _parse_response(text)
-        except TrafikinfoError:
-            raise UpdateFailed from None
+        except TrafikinfoError as err:
+            raise UpdateFailed(str(err)) from err
         filtered = [e for e in data.events if self._include_event(e)]
         filtered = self._apply_road_filter(filtered)
-        # Best-effort local icon caching for picture cards
+        # Best-effort local icon caching for picture cards (run in background to not block)
         icon_ids = [e.icon_id for e in filtered if e.icon_id]
-        try:
-            await self._ensure_icons_cached([i for i in icon_ids if isinstance(i, str)])
-            await self._ensure_category_icons_cached()
-        except Exception as err:
-            _LOGGER.debug("Icon caching failed: %s", err)
+        self.hass.async_create_background_task(
+            self._cache_icons_background([i for i in icon_ids if isinstance(i, str)]),
+            f"{DOMAIN}_icon_cache",
+        )
         _LOGGER.debug(
             "Filter: mode=%s center=(%.5f,%.5f) radius_km=%.1f counties=%s events_before=%s events_after=%s",
             self._filter_mode,
