@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
 
 DOMAIN = "trafikinfo_se"
 
@@ -65,6 +69,18 @@ TRAFIKVERKET_ICON_V2_URL_PREFIX = (
 ICON_CACHE_DIR = "trafikinfo_se/icons"
 
 ATTRIBUTION = "Data provided by Trafikverket (Trafikinfo)."
+
+
+def get_user_agent(hass: "HomeAssistant | None" = None) -> str:
+    """Generate User-Agent header for HTTP requests.
+
+    Format: HomeAssistant/{ha_version} trafikinfo_se/{integration_version}
+    """
+    from homeassistant.const import __version__ as ha_version
+
+    integration_version = "0.0.0"  # Updated by semantic-release
+    return f"HomeAssistant/{ha_version} {DOMAIN}/{integration_version}"
+
 
 # Swedish counties (län) using standard county codes.
 # Trafikverket exposes affected counties per deviation as `CountyNo`.

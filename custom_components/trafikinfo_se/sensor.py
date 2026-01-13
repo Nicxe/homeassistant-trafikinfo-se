@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 import logging
 from typing import Any
 from urllib.parse import quote
 
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import SensorEntity, SensorEntityDescription, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -16,6 +17,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 
+from .__init__ import TrafikinfoConfigEntry
 from .const import (
     ATTRIBUTION,
     CONF_MESSAGE_TYPES,
@@ -77,6 +79,75 @@ MESSAGE_TYPE_COLORS: dict[str, str] = {
     "Trafikmeddelande": "#2e7d32",
     "Vägarbete": "#f9a825",
 }
+
+
+@dataclass(frozen=True, kw_only=True)
+class TrafikinfoSensorEntityDescription(SensorEntityDescription):
+    """Describes Trafikinfo sensor entity."""
+
+    message_type: str
+    icon_mdi: str
+    badge_color: str
+    icon_id_fallback: str | None = None
+
+
+SENSOR_DESCRIPTIONS: dict[str, TrafikinfoSensorEntityDescription] = {
+    "Viktig trafikinformation": TrafikinfoSensorEntityDescription(
+        key="viktig_trafikinformation",
+        translation_key="viktig_trafikinformation",
+        message_type="Viktig trafikinformation",
+        icon_mdi="mdi:alert-octagon",
+        badge_color="#b71c1c",
+        icon_id_fallback="emergencyInformation",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    "Hinder": TrafikinfoSensorEntityDescription(
+        key="hinder",
+        translation_key="hinder",
+        message_type="Hinder",
+        icon_mdi="mdi:alert-decagram-outline",
+        badge_color="#ef6c00",
+        icon_id_fallback="trafficMessagePlanned",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    "Olycka": TrafikinfoSensorEntityDescription(
+        key="olycka",
+        translation_key="olycka",
+        message_type="Olycka",
+        icon_mdi="mdi:alert",
+        badge_color="#4e342e",
+        icon_id_fallback="roadAccident",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    "Restriktion": TrafikinfoSensorEntityDescription(
+        key="restriktion",
+        translation_key="restriktion",
+        message_type="Restriktion",
+        icon_mdi="mdi:road-variant",
+        badge_color="#6a1b9a",
+        icon_id_fallback="trafficMessagePlanned",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    "Trafikmeddelande": TrafikinfoSensorEntityDescription(
+        key="trafikmeddelande",
+        translation_key="trafikmeddelande",
+        message_type="Trafikmeddelande",
+        icon_mdi="mdi:message-text",
+        badge_color="#2e7d32",
+        icon_id_fallback=None,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    "Vägarbete": TrafikinfoSensorEntityDescription(
+        key="vagarbete",
+        translation_key="vagarbete",
+        message_type="Vägarbete",
+        icon_mdi="mdi:traffic-cone",
+        badge_color="#f9a825",
+        icon_id_fallback=None,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+}
+
 
 # Category -> Trafikverket IconId (stable, from Icon dataset)
 CATEGORY_ICON_ID: dict[str, str] = {
@@ -153,11 +224,11 @@ def _category_for_event(event: Any) -> str | None:
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: TrafikinfoConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensor(s) from a config entry."""
-    coordinator: TrafikinfoCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    coordinator: TrafikinfoCoordinator = entry.runtime_data.coordinator
     enabled = entry.options.get(CONF_MESSAGE_TYPES, entry.data.get(CONF_MESSAGE_TYPES, DEFAULT_MESSAGE_TYPES))
     if not isinstance(enabled, list) or not enabled:
         enabled = list(DEFAULT_MESSAGE_TYPES)
@@ -165,35 +236,34 @@ async def async_setup_entry(
 
     entities: list[SensorEntity] = []
     for msg_type in DEFAULT_MESSAGE_TYPES:
-        if msg_type in enabled_set:
-            entities.append(TrafikinfoMessageTypeSensor(entry, coordinator, msg_type))
+        if msg_type in enabled_set and msg_type in SENSOR_DESCRIPTIONS:
+            description = SENSOR_DESCRIPTIONS[msg_type]
+            entities.append(TrafikinfoMessageTypeSensor(entry, coordinator, description))
     async_add_entities(entities)
 
 
 class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], SensorEntity):
     """Sensor showing number of active traffic events for a specific MessageType."""
 
-    # Use full friendly names directly (no device-name prefix).
-    _attr_has_entity_name = False
-    _attr_state_class = SensorStateClass.MEASUREMENT
+    entity_description: TrafikinfoSensorEntityDescription
+    _attr_has_entity_name = True
     _EVENT_PUBLISH_TYPES = {"Hinder", "Olycka"}
 
     def __init__(
         self,
         entry: ConfigEntry,
         coordinator: TrafikinfoCoordinator,
-        message_type: str,
+        entity_description: TrafikinfoSensorEntityDescription,
     ) -> None:
         super().__init__(coordinator)
+        self.entity_description = entity_description
         self._entry = entry
-        self._message_type = message_type
-        self._attr_unique_id = f"{entry.entry_id}_message_type_{slugify(message_type)}"
-        # Friendly display names (keep internal categories unchanged).
-        display_name_map = {
-            "Restriktion": "Restriktioner",
-        }
-        self._attr_name = display_name_map.get(message_type, message_type)
-        self._attr_icon = MESSAGE_TYPE_ICONS.get(message_type, "mdi:traffic-cone")
+        self._message_type = entity_description.message_type
+
+        # Unique ID preserved for backward compatibility
+        self._attr_unique_id = f"{entry.entry_id}_message_type_{slugify(self._message_type)}"
+        self._attr_icon = entity_description.icon_mdi
+
         self._incident_bus_name: str | None = None
         self._diff_initialized: bool = False
         # incident_key -> signature (used to detect new/changed incidents)
@@ -203,16 +273,6 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
             # - trafikinfo_se_hinder_incident
             # - trafikinfo_se_olycka_incident
             self._incident_bus_name = f"{DOMAIN}_{slugify(self._message_type)}_incident"
-
-    @property
-    def suggested_object_id(self) -> str | None:
-        """Suggest entity_id as sensor.trafikinfo_se_<name> on first creation."""
-        name = self._attr_name or self._message_type
-        title = (self._entry.title or "").strip()
-        if title and title != "Trafikinfo SE":
-            # When multiple config entries exist, include the entry title to avoid collisions.
-            return f"{DOMAIN}_{slugify(title)}_{slugify(name)}"
-        return f"{DOMAIN}_{slugify(name)}"
 
     @property
     def device_info(self) -> DeviceInfo:

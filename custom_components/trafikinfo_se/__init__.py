@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 from time import monotonic
+from typing import TYPE_CHECKING
 
 import homeassistant.helpers.config_validation as cv
 from homeassistant.config_entries import ConfigEntry
@@ -20,19 +22,29 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[str] = ["sensor"]
 
+
+@dataclass
+class TrafikinfoRuntimeData:
+    """Runtime data for Trafikinfo SE integration."""
+
+    coordinator: TrafikinfoCoordinator
+
+
+if TYPE_CHECKING:
+    type TrafikinfoConfigEntry = ConfigEntry[TrafikinfoRuntimeData]
+else:
+    TrafikinfoConfigEntry = ConfigEntry
+
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the integration (YAML is not supported)."""
-    hass.data.setdefault(DOMAIN, {})
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: TrafikinfoConfigEntry) -> bool:
     """Set up Trafikinfo SE from a config entry."""
-    hass.data.setdefault(DOMAIN, {})
-
     coordinator = TrafikinfoCoordinator(hass, entry)
     try:
         start = monotonic()
@@ -56,7 +68,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         raise ConfigEntryNotReady from ex
 
-    hass.data[DOMAIN][entry.entry_id] = {"coordinator": coordinator}
+    entry.runtime_data = TrafikinfoRuntimeData(coordinator=coordinator)
 
     async def _options_updated(hass: HomeAssistant, updated_entry: ConfigEntry) -> None:
         # Options can affect entity creation (enabled message types), so reload entry.
@@ -68,12 +80,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: TrafikinfoConfigEntry) -> bool:
     """Unload a config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unload_ok:
-        hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
-    return unload_ok
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
