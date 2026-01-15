@@ -1,0 +1,9 @@
+name: ❓ Question
+description: Ask a question about Trafikinfo SE
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please use the Home Assistant Community Forum for support and questions:
+        https://community.home-assistant.io/t/trafikinfo-se-real-time-swedish-traffic-alerts-for-home-assistant/973654

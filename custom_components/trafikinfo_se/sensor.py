@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 import logging
 from typing import Any
 from urllib.parse import quote
 
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import SensorEntity, SensorEntityDescription, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -16,11 +17,14 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 
+from .__init__ import TrafikinfoConfigEntry
 from .const import (
     ATTRIBUTION,
+    CONF_DISMISSED_EVENTS,
     CONF_MESSAGE_TYPES,
     DEFAULT_MESSAGE_TYPES,
     DOMAIN,
+    TRAFIKVERKET_ICONS_BASE_URL,
 )
 from .coordinator import TrafikinfoCoordinator, TrafikinfoData
 
@@ -77,6 +81,75 @@ MESSAGE_TYPE_COLORS: dict[str, str] = {
     "Trafikmeddelande": "#2e7d32",
     "Vägarbete": "#f9a825",
 }
+
+
+@dataclass(frozen=True, kw_only=True)
+class TrafikinfoSensorEntityDescription(SensorEntityDescription):
+    """Describes Trafikinfo sensor entity."""
+
+    message_type: str
+    icon_mdi: str
+    badge_color: str
+    icon_id_fallback: str | None = None
+
+
+SENSOR_DESCRIPTIONS: dict[str, TrafikinfoSensorEntityDescription] = {
+    "Viktig trafikinformation": TrafikinfoSensorEntityDescription(
+        key="viktig_trafikinformation",
+        translation_key="viktig_trafikinformation",
+        message_type="Viktig trafikinformation",
+        icon_mdi="mdi:alert-octagon",
+        badge_color="#b71c1c",
+        icon_id_fallback="emergencyInformation",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    "Hinder": TrafikinfoSensorEntityDescription(
+        key="hinder",
+        translation_key="hinder",
+        message_type="Hinder",
+        icon_mdi="mdi:alert-decagram-outline",
+        badge_color="#ef6c00",
+        icon_id_fallback="trafficMessagePlanned",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    "Olycka": TrafikinfoSensorEntityDescription(
+        key="olycka",
+        translation_key="olycka",
+        message_type="Olycka",
+        icon_mdi="mdi:alert",
+        badge_color="#4e342e",
+        icon_id_fallback="roadAccident",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    "Restriktion": TrafikinfoSensorEntityDescription(
+        key="restriktion",
+        translation_key="restriktion",
+        message_type="Restriktion",
+        icon_mdi="mdi:road-variant",
+        badge_color="#6a1b9a",
+        icon_id_fallback="trafficMessagePlanned",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    "Trafikmeddelande": TrafikinfoSensorEntityDescription(
+        key="trafikmeddelande",
+        translation_key="trafikmeddelande",
+        message_type="Trafikmeddelande",
+        icon_mdi="mdi:message-text",
+        badge_color="#2e7d32",
+        icon_id_fallback=None,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    "Vägarbete": TrafikinfoSensorEntityDescription(
+        key="vagarbete",
+        translation_key="vagarbete",
+        message_type="Vägarbete",
+        icon_mdi="mdi:traffic-cone",
+        badge_color="#f9a825",
+        icon_id_fallback=None,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+}
+
 
 # Category -> Trafikverket IconId (stable, from Icon dataset)
 CATEGORY_ICON_ID: dict[str, str] = {
@@ -153,11 +226,11 @@ def _category_for_event(event: Any) -> str | None:
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: TrafikinfoConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensor(s) from a config entry."""
-    coordinator: TrafikinfoCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    coordinator: TrafikinfoCoordinator = entry.runtime_data.coordinator
     enabled = entry.options.get(CONF_MESSAGE_TYPES, entry.data.get(CONF_MESSAGE_TYPES, DEFAULT_MESSAGE_TYPES))
     if not isinstance(enabled, list) or not enabled:
         enabled = list(DEFAULT_MESSAGE_TYPES)
@@ -165,35 +238,34 @@ async def async_setup_entry(
 
     entities: list[SensorEntity] = []
     for msg_type in DEFAULT_MESSAGE_TYPES:
-        if msg_type in enabled_set:
-            entities.append(TrafikinfoMessageTypeSensor(entry, coordinator, msg_type))
+        if msg_type in enabled_set and msg_type in SENSOR_DESCRIPTIONS:
+            description = SENSOR_DESCRIPTIONS[msg_type]
+            entities.append(TrafikinfoMessageTypeSensor(entry, coordinator, description))
     async_add_entities(entities)
 
 
 class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], SensorEntity):
     """Sensor showing number of active traffic events for a specific MessageType."""
 
-    # Use full friendly names directly (no device-name prefix).
-    _attr_has_entity_name = False
-    _attr_state_class = SensorStateClass.MEASUREMENT
+    entity_description: TrafikinfoSensorEntityDescription
+    _attr_has_entity_name = True
     _EVENT_PUBLISH_TYPES = {"Hinder", "Olycka"}
 
     def __init__(
         self,
         entry: ConfigEntry,
         coordinator: TrafikinfoCoordinator,
-        message_type: str,
+        entity_description: TrafikinfoSensorEntityDescription,
     ) -> None:
         super().__init__(coordinator)
+        self.entity_description = entity_description
         self._entry = entry
-        self._message_type = message_type
-        self._attr_unique_id = f"{entry.entry_id}_message_type_{slugify(message_type)}"
-        # Friendly display names (keep internal categories unchanged).
-        display_name_map = {
-            "Restriktion": "Restriktioner",
-        }
-        self._attr_name = display_name_map.get(message_type, message_type)
-        self._attr_icon = MESSAGE_TYPE_ICONS.get(message_type, "mdi:traffic-cone")
+        self._message_type = entity_description.message_type
+
+        # Unique ID preserved for backward compatibility
+        self._attr_unique_id = f"{entry.entry_id}_message_type_{slugify(self._message_type)}"
+        self._attr_icon = entity_description.icon_mdi
+
         self._incident_bus_name: str | None = None
         self._diff_initialized: bool = False
         # incident_key -> signature (used to detect new/changed incidents)
@@ -205,16 +277,6 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
             self._incident_bus_name = f"{DOMAIN}_{slugify(self._message_type)}_incident"
 
     @property
-    def suggested_object_id(self) -> str | None:
-        """Suggest entity_id as sensor.trafikinfo_se_<name> on first creation."""
-        name = self._attr_name or self._message_type
-        title = (self._entry.title or "").strip()
-        if title and title != "Trafikinfo SE":
-            # When multiple config entries exist, include the entry title to avoid collisions.
-            return f"{DOMAIN}_{slugify(title)}_{slugify(name)}"
-        return f"{DOMAIN}_{slugify(name)}"
-
-    @property
     def device_info(self) -> DeviceInfo:
         return DeviceInfo(
             identifiers={(DOMAIN, self._entry.entry_id)},
@@ -222,6 +284,36 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
             manufacturer="Trafikverket",
             model="Road.TrafficInfo Situation",
         )
+
+    def _get_dismissed_events(self) -> dict[str, dict]:
+        """Get dismissed events from entry options."""
+        dismissed = self._entry.options.get(CONF_DISMISSED_EVENTS, {})
+        if not isinstance(dismissed, dict):
+            return {}
+        return dismissed
+
+    def _is_event_dismissed(self, event: Any) -> bool:
+        """Check if an event is currently dismissed."""
+        dismissed = self._get_dismissed_events()
+        if not dismissed:
+            return False
+
+        event_key = self._incident_key(event)
+        if not event_key or event_key not in dismissed:
+            return False
+
+        dismissed_info = dismissed[event_key]
+        if not isinstance(dismissed_info, dict):
+            return True  # Dismissed without signature
+
+        stored_signature = dismissed_info.get("signature")
+        if not stored_signature:
+            # Permanent dismiss (no signature stored)
+            return True
+
+        # Check if event has been updated (signature changed)
+        current_signature = self._incident_signature(event)
+        return stored_signature == current_signature
 
     def _filtered_events(self) -> list[Any]:
         data: TrafikinfoData | None = self.coordinator.data
@@ -234,6 +326,16 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
             if _category_for_event(e) == self._message_type:
                 out.append(e)
         return out
+
+    def _visible_events(self) -> list[Any]:
+        """Get filtered events excluding dismissed ones."""
+        events = self._filtered_events()
+        return [e for e in events if not self._is_event_dismissed(e)]
+
+    def _dismissed_count(self) -> int:
+        """Count how many filtered events are currently dismissed."""
+        events = self._filtered_events()
+        return sum(1 for e in events if self._is_event_dismissed(e))
 
     def _incident_key(self, event: Any) -> str | None:
         """Stable key for one incident."""
@@ -339,7 +441,7 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
     def native_value(self) -> int | None:
         if not self.coordinator.data:
             return None
-        return len(self._filtered_events())
+        return len(self._visible_events())
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -348,22 +450,6 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
         if not data:
             return attrs
 
-        filtered = self._filtered_events()
-        sorted_events = self.coordinator.sort_events(filtered)
-        max_items = max(0, int(self.coordinator.max_items))
-        if max_items == 0:
-            events = []
-        else:
-            out = []
-            for e in sorted_events[:max_items]:
-                d = e.as_dict()
-                dist = self.coordinator.event_distance_km(e)
-                if dist is not None:
-                    # Rounded for readability in dashboards
-                    d["distance_km"] = round(float(dist), 2)
-                out.append(d)
-            events = out
-
         # Expose a simple icon URL surface for dashboards/templates.
         # Note: we intentionally do not set the HA `entity_picture` property anymore
         # (always use MDI icon), but we keep URLs in attributes for users who want them.
@@ -371,8 +457,40 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
         # Always expose the URL in attributes so users can use it in templates/cards.
         entity_picture_attr = picture_url
 
+        all_filtered = self._filtered_events()
+        visible = self._visible_events()
+        dismissed_count = self._dismissed_count()
+        sorted_events = self.coordinator.sort_events(visible)
+        max_items = max(0, int(self.coordinator.max_items))
+        if max_items == 0:
+            events = []
+        else:
+            out = []
+            for e in sorted_events[:max_items]:
+                d = e.as_dict()
+                icon_id = d.get("icon_id")
+                local_icon = self.coordinator.get_local_icon_url(icon_id)
+                if local_icon:
+                    d["icon_url"] = local_icon
+                elif icon_id:
+                    d["icon_url"] = f"{TRAFIKVERKET_ICONS_BASE_URL}/{quote(icon_id, safe='')}?type=png32x32"
+                elif picture_url:
+                    d["icon_url"] = picture_url
+                dist = self.coordinator.event_distance_km(e)
+                if dist is not None:
+                    # Rounded for readability in dashboards
+                    d["distance_km"] = round(float(dist), 2)
+                # Add event_key and signature for dismiss functionality
+                event_key = self._incident_key(e)
+                if event_key:
+                    d["event_key"] = event_key
+                    d["event_signature"] = self._incident_signature(e)
+                out.append(d)
+            events = out
+
         attrs.update(
             {
+                "entry_id": self._entry.entry_id,
                 "message_type": self._message_type,
                 "filter_mode": getattr(self.coordinator, "filter_mode", None),
                 "filter_counties": getattr(self.coordinator, "counties", None),
@@ -394,7 +512,9 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
                 "entity_picture": entity_picture_attr,
                 "icon_url": picture_url,
                 "events": events,
-                "events_total": len(filtered),
+                "events_total": len(all_filtered),
+                "events_visible": len(visible),
+                "dismissed_count": dismissed_count,
                 "max_items": max_items,
                 "last_modified": data.last_modified.isoformat()
                 if data.last_modified is not None
@@ -404,4 +524,3 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
             }
         )
         return attrs
-

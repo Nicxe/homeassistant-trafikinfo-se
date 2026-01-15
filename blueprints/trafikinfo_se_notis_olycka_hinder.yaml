@@ -1,0 +1,350 @@
+blueprint:
+  name: "Trafikinfo SE: Notis vid olycka/hinder"
+  description: >
+    Skickar en notis när Trafikinfo SE publicerar en ny eller uppdaterad incident
+    för Olycka och/eller Hinder. Filtrera på väg (vägnr/vägnamn) och påverkan
+    (severity_text).
+  domain: automation
+  input:
+    notify_devices:
+      name: Notisenheter (Companion App)
+      description: >
+        Välj en eller flera enheter från Home Assistant Companion App (mobile_app).
+        Detta ger en dropdown från din instans.
+      default: []
+      selector:
+        device:
+          multiple: true
+          integration: mobile_app
+
+    notify_additional_services:
+      name: Extra notifieringstjänster (valfritt)
+      description: >
+        Komma- eller semikolonseparerad lista av `notify.*`-tjänster, t.ex.
+        `notify.telegram`, `notify.notify`.
+      default: ""
+      selector:
+        text: {}
+
+    source_entities:
+      name: Källa (valfritt)
+      description: >
+        Om du har flera Trafikinfo SE-instanser: välj vilka sensor-entiteter som ska få trigga.
+        Lämna tomt för att trigga på alla instanser.
+      default: []
+      selector:
+        entity:
+          multiple: true
+          domain: sensor
+
+    incident_types:
+      name: Händelsetyper
+      description: Vilka incident-typer som ska trigga automationen.
+      default:
+        - Olycka
+        - Hinder
+      selector:
+        select:
+          multiple: true
+          options:
+            - Olycka
+            - Hinder
+
+    trigger_on:
+      name: Utlös vid
+      description: Välj om notiser ska skickas för nya, uppdaterade eller båda.
+      default: added
+      selector:
+        select:
+          options:
+            - label: Nya händelser
+              value: added
+            - label: Uppdaterade händelser
+              value: updated
+            - label: Båda
+              value: both
+
+    road_filter:
+      name: Vägfilter (valfritt)
+      description: >
+        Komma- eller semikolonseparerad lista. Matchar mot `road_number`,
+        `road_name` och `location_descriptor` (case-insensitive). Ex: `E6, 1753,
+        Ödenäsvägen, Väg 163`.
+      default: ""
+      selector:
+        text: {}
+
+    severity_levels:
+      name: Påverkan / allvarlighetsgrad (valfritt)
+      description: >
+        Filtrerar på `severity_text`. Tomt val = ingen filtrering.
+      default: []
+      selector:
+        select:
+          multiple: true
+          options:
+            - Ingen påverkan
+            - Liten påverkan
+            - Stor påverkan
+            - Mycket stor påverkan
+
+    restriction_contains:
+      name: traffic_restriction_type innehåller (valfritt)
+      description: >
+        Ex: `Körfält blockerade`. Tomt = ingen filtrering.
+      default: ""
+      selector:
+        text: {}
+
+    title_fields:
+      name: Titel (fält)
+      description: Välj vilka fält som ska byggas in i titeln.
+      default:
+        - type
+        - severity
+        - road
+      selector:
+        select:
+          multiple: true
+          options:
+            - label: Typ (Olycka/Hinder)
+              value: type
+            - label: Ny/Uppdaterad
+              value: change
+            - label: Påverkan (severity_text)
+              value: severity
+            - label: Väg (vägnamn + vägnr)
+              value: road
+            - label: Distans (km)
+              value: distance
+            - label: Restriktion (traffic_restriction_type)
+              value: restriction
+
+    message_fields:
+      name: Innehåll i notis (fält)
+      description: Välj vilka fält från incidenten som ska ingå i notisen.
+      default:
+        - summary
+        - road
+        - severity
+        - distance
+        - description
+      selector:
+        select:
+          multiple: true
+          options:
+            - label: Sammanfattning (typ + ny/uppdaterad)
+              value: summary
+            - label: Typ (Olycka/Hinder)
+              value: type
+            - label: Ny/Uppdaterad
+              value: change
+            - label: Rubrik (incident.header)
+              value: header
+            - label: Väg (vägnamn + vägnr)
+              value: road
+            - label: Platsbeskrivning
+              value: location
+            - label: Påverkan (severity_text)
+              value: severity
+            - label: Restriktion (traffic_restriction_type)
+              value: restriction
+            - label: Riktning
+              value: direction
+            - label: Distans (km)
+              value: distance
+            - label: Beskrivning (Trafikverkets text)
+              value: description
+            - label: Länk (weblink)
+              value: link
+
+mode: single
+
+trigger:
+  - platform: event
+    event_type: trafikinfo_se_olycka_incident
+  - platform: event
+    event_type: trafikinfo_se_hinder_incident
+
+variables:
+  incident: "{{ trigger.event.data.incident }}"
+  message_type: "{{ trigger.event.data.message_type }}"
+  change_type: "{{ trigger.event.data.change_type }}"
+  change_label: >-
+    {% if change_type == 'added' %}Ny{% elif change_type == 'updated' %}Uppdaterad{% else %}{{ change_type }}{% endif %}
+  road_number: "{{ incident.road_number | default('', true) }}"
+  road_name: "{{ incident.road_name | default('', true) }}"
+  severity_code: "{{ incident.severity_code | int(0) }}"
+  severity_text: "{{ incident.severity_text | default('', true) }}"
+  distance_km: "{{ incident.distance_km if (incident.distance_km is defined) else none }}"
+  allowed_types: !input incident_types
+  wanted_trigger_on: !input trigger_on
+  road_filter_raw: !input road_filter
+  restriction_contains_input: !input restriction_contains
+  severity_levels_input: !input severity_levels
+  notify_devices_input: !input notify_devices
+  notify_additional_services_raw: !input notify_additional_services
+  source_entities_input: !input source_entities
+  message_fields_input: !input message_fields
+  title_fields_input: !input title_fields
+  road_tokens: >-
+    {% set s = (road_filter_raw | default('') | string).replace(';', ',') %}
+    {% set parts = s.split(',') %}
+    {% set out = [] %}
+    {% for p in parts %}
+      {% set t = (p | trim | lower) %}
+      {% if t %}
+        {% set t = t | regex_replace('^(väg|vag|road)\\s+', '') %}
+        {% set out = out + [t] %}
+      {% endif %}
+    {% endfor %}
+    {{ out }}
+  road_text: >-
+    {{ (road_name ~ ' ' ~ road_number ~ ' ' ~ (incident.location_descriptor | default('', true))) | lower }}
+  notify_services: >-
+    {% set ns = namespace(services=[]) %}
+    {% for dev_id in (notify_devices_input | default([])) %}
+      {% set name = device_attr(dev_id, 'name') %}
+      {% if name %}
+        {% set ns.services = ns.services + ['notify.mobile_app_' ~ (name | slugify)] %}
+      {% endif %}
+    {% endfor %}
+    {% set s = (notify_additional_services_raw | default('') | string).replace(';', ',') %}
+    {% for raw in s.split(',') %}
+      {% set svc = (raw | trim) %}
+      {% if svc %}
+        {% set ns.services = ns.services + [svc] %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.services }}
+  notification_title: >-
+    {% set fields = title_fields_input | default([]) %}
+    {% if fields is string %}{% set fields = [fields] %}{% endif %}
+    {% set ns = namespace(parts=[]) %}
+    {% if 'type' in fields %}{% set ns.parts = ns.parts + [message_type] %}{% endif %}
+    {% if 'change' in fields %}{% set ns.parts = ns.parts + [change_label] %}{% endif %}
+    {% set sev = (severity_text | string | trim) %}
+    {% if 'severity' in fields and sev %}
+      {% set ns.parts = ns.parts + [sev] %}
+    {% endif %}
+    {% if 'road' in fields %}
+      {% set where = (road_name ~ ' ' ~ road_number) | trim %}
+      {% if where %}{% set ns.parts = ns.parts + [where] %}{% endif %}
+    {% endif %}
+    {% if 'distance' in fields and (distance_km is not none) %}
+      {% set ns.parts = ns.parts + [((distance_km | float) | round(1) | string) ~ ' km'] %}
+    {% endif %}
+    {% if 'restriction' in fields %}
+      {% set r = (incident.traffic_restriction_type | default('', true) | string | trim) %}
+      {% if r %}{% set ns.parts = ns.parts + [r] %}{% endif %}
+    {% endif %}
+    {% set t = (ns.parts | reject('equalto','') | list | join(' · ')) %}
+    {{ t if (t | string | trim) else 'Trafikinfo SE' }}
+  built_message: >-
+    {% set fields = message_fields_input | default([]) %}
+    {% if fields is string %}{% set fields = [fields] %}{% endif %}
+    {% set ns = namespace(lines=[]) %}
+    {% if 'summary' in fields %}
+      {% set ns.lines = ns.lines + [message_type ~ ' (' ~ change_label ~ ')'] %}
+    {% endif %}
+    {% if 'type' in fields and 'summary' not in fields %}
+      {% set ns.lines = ns.lines + [message_type] %}
+    {% endif %}
+    {% if 'change' in fields and 'summary' not in fields %}
+      {% set ns.lines = ns.lines + [change_label] %}
+    {% endif %}
+    {% if 'header' in fields %}
+      {% set h = (incident.header | default('', true) | string | trim) %}
+      {% if h %}{% set ns.lines = ns.lines + [h] %}{% endif %}
+    {% endif %}
+    {% if 'road' in fields %}
+      {% set where = (road_name ~ ' ' ~ road_number) | trim %}
+      {% if where %}{% set ns.lines = ns.lines + ['Väg: ' ~ where] %}{% endif %}
+    {% endif %}
+    {% if 'location' in fields %}
+      {% set loc = (incident.location_descriptor | default('', true) | string | trim) %}
+      {% if loc %}{% set ns.lines = ns.lines + ['Plats: ' ~ loc] %}{% endif %}
+    {% endif %}
+    {% if 'severity' in fields %}
+      {% set sev = (severity_text | string | trim) %}
+      {% if sev %}{% set ns.lines = ns.lines + ['Påverkan: ' ~ sev] %}{% endif %}
+    {% endif %}
+    {% if 'restriction' in fields %}
+      {% set r = (incident.traffic_restriction_type | default('', true) | string | trim) %}
+      {% if r %}{% set ns.lines = ns.lines + ['Restriktion: ' ~ r] %}{% endif %}
+    {% endif %}
+    {% if 'direction' in fields %}
+      {% set d = (incident.affected_direction | default('', true) | string | trim) %}
+      {% if d %}{% set ns.lines = ns.lines + ['Riktning: ' ~ d] %}{% endif %}
+    {% endif %}
+    {% if 'distance' in fields and (distance_km is not none) %}
+      {% set ns.lines = ns.lines + ['Distans: ' ~ (((distance_km | float) | round(1)) | string) ~ ' km'] %}
+    {% endif %}
+    {% if 'description' in fields %}
+      {% set m = (incident.message | default('', true) | string | trim) %}
+      {% if m %}{% set ns.lines = ns.lines + [m] %}{% endif %}
+    {% endif %}
+    {% if 'link' in fields %}
+      {% set w = (incident.weblink | default('', true) | string | trim) %}
+      {% if w %}{% set ns.lines = ns.lines + ['Länk: ' ~ w] %}{% endif %}
+    {% endif %}
+    {{ ns.lines | reject('equalto','') | list | join('\n') }}
+  notification_message: >-
+    {% set m = (built_message | string) %}
+    {{ m if (m | trim) else (incident.message | default('', true) | string) }}
+
+condition:
+  - condition: template
+    value_template: >-
+      {{ (notify_services is sequence) and ((notify_services | length) > 0) }}
+  - condition: template
+    value_template: >-
+      {% set allowed = source_entities_input | default([]) %}
+      {% if allowed is string %}{% set allowed = [allowed] %}{% endif %}
+      {% set eid = trigger.event.data.entity_id | default('') %}
+      {{ (allowed | length) == 0 or (eid in allowed) }}
+  - condition: template
+    value_template: >-
+      {% set types = allowed_types %}
+      {% if types is string %}{% set types = [types] %}{% endif %}
+      {{ message_type in (types | default([])) }}
+  - condition: template
+    value_template: >-
+      {{ wanted_trigger_on == 'both' or change_type == wanted_trigger_on }}
+  - condition: template
+    value_template: >-
+      {% set levels = severity_levels_input | default([]) %}
+      {% if levels is string %}{% set levels = [levels] %}{% endif %}
+      {% set levels = levels | map('string') | map('lower') | list %}
+      {% set have = (severity_text | string | trim | lower) %}
+      {{ (levels | length) == 0 or have in levels }}
+  - condition: template
+    value_template: >-
+      {% set want = (restriction_contains_input | string | trim | lower) %}
+      {% set have = (incident.traffic_restriction_type | default('', true) | string | lower) %}
+      {{ (not want) or (want in have) }}
+  - condition: template
+    value_template: >-
+      {% set tokens = road_tokens %}
+      {% if tokens is string %}{% set tokens = [] %}{% endif %}
+      {% if (tokens | length) == 0 %}
+        true
+      {% else %}
+        {% set road_no = (incident.road_number | default('', true) | string | lower | regex_replace('^(väg|vag|road)\\s+', '') | trim) %}
+        {% set ns = namespace(match=false) %}
+        {% for t in tokens %}
+          {% if t and (t == road_no or t in road_text) %}
+            {% set ns.match = true %}
+          {% endif %}
+        {% endfor %}
+        {{ ns.match }}
+      {% endif %}
+
+action:
+  - repeat:
+      for_each: "{{ notify_services }}"
+      sequence:
+        - service: "{{ repeat.item }}"
+          data:
+            title: "{{ notification_title }}"
+            message: "{{ notification_message }}"

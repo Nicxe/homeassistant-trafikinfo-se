@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import logging
 import math
+from pathlib import Path
 import re
 from typing import Any
-from pathlib import Path
 from urllib.parse import quote
 import xml.etree.ElementTree as ET
 
+import aiohttp
 import async_timeout
 
 from homeassistant.config_entries import ConfigEntry
@@ -49,11 +51,32 @@ from .const import (
     TRAFIKVERKET_ICONS_BASE_URL,
     TRAFIKVERKET_ICON_V2_URL_PREFIX,
     ICON_CACHE_DIR,
+    get_user_agent,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
 _WKT_NUMBER_RE = re.compile(r"[-+]?\d+(?:\.\d+)?")
+
+
+class TrafikinfoError(Exception):
+    """Base exception for Trafikinfo SE."""
+
+
+class TrafikinfoConnectionError(TrafikinfoError):
+    """Exception for connection errors."""
+
+
+class TrafikinfoAuthenticationError(TrafikinfoError):
+    """Exception for authentication errors."""
+
+
+class TrafikinfoAPIError(TrafikinfoError):
+    """Exception for API errors."""
+
+
+class TrafikinfoParseError(TrafikinfoError):
+    """Exception for XML parsing errors."""
 
 def _file_nonempty(path: Path) -> bool:
     try:
@@ -253,11 +276,13 @@ def _parse_response(xml_text: str) -> TrafikinfoData:
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError as err:
-        raise UpdateFailed(f"Invalid XML from Trafikverket: {err}") from err
+        raise TrafikinfoParseError(f"Invalid XML from Trafikverket: {err}") from err
 
     err_msg = root.findtext(".//{*}ERROR/{*}MESSAGE")
     if err_msg:
-        raise UpdateFailed(f"Trafikverket error: {err_msg.strip()}")
+        if "authentication" in err_msg.lower() or "invalid key" in err_msg.lower():
+            raise TrafikinfoAuthenticationError(f"Authentication failed: {err_msg.strip()}")
+        raise TrafikinfoAPIError(f"Trafikverket API error: {err_msg.strip()}")
 
     last_modified_raw = root.find(".//{*}INFO/{*}LASTMODIFIED")
     last_modified: datetime | None = None
@@ -780,7 +805,10 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
                 continue
             try:
                 async with async_timeout.timeout(15):
-                    async with session.get(url) as resp:
+                    async with session.get(
+                        url,
+                        headers={"User-Agent": get_user_agent(self.hass)},
+                    ) as resp:
                         if resp.status != 200:
                             continue
                         content = await resp.read()
@@ -827,6 +855,14 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
             "trafficMessagePlanned",
         ):
             await self._ensure_icon_cached(icon_id)
+
+    async def _cache_icons_background(self, icon_ids: list[str]) -> None:
+        """Cache icons in background task to not block coordinator updates."""
+        try:
+            await self._ensure_icons_cached(icon_ids)
+            await self._ensure_category_icons_cached()
+        except Exception as err:
+            _LOGGER.debug("Icon caching failed: %s", err)
 
     def _wkt_points(self, wkt: str | None) -> list[tuple[float, float]]:
         """Extract lon/lat points from common WKT shapes (POINT/LINESTRING/etc)."""
@@ -891,7 +927,7 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
 
     async def _async_update_data(self) -> TrafikinfoData:
         if not self._api_key:
-            raise UpdateFailed("Missing API key")
+            raise TrafikinfoAuthenticationError("Missing API key")
 
         session = aiohttp_client.async_get_clientsession(self.hass)
         xml_request = _build_request_xml(self._api_key, limit=5000)
@@ -901,28 +937,41 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
                 async with session.post(
                     TRAFIKVERKET_DATACACHE_URL,
                     data=xml_request.encode("utf-8"),
-                    headers={"Content-Type": "text/xml; charset=utf-8"},
+                    headers={
+                        "Content-Type": "text/xml; charset=utf-8",
+                        "User-Agent": get_user_agent(self.hass),
+                    },
                 ) as resp:
                     text = await resp.text()
-                    if resp.status != 200:
-                        raise UpdateFailed(
-                            f"Trafikverket returned HTTP {resp.status}: {text[:300]}"
+                    if resp.status in (401, 403):
+                        raise TrafikinfoAuthenticationError(
+                            f"Authentication failed: HTTP {resp.status}"
                         )
-        except UpdateFailed:
-            raise
+                    if resp.status != 200:
+                        raise TrafikinfoAPIError(
+                            f"Trafikverket API returned HTTP {resp.status}: {text[:300]}"
+                        )
+        except TrafikinfoError as err:
+            raise UpdateFailed(str(err)) from err
+        except asyncio.TimeoutError:
+            raise UpdateFailed("Request timeout - Trafikverket API not responding") from None
+        except aiohttp.ClientError as err:
+            raise UpdateFailed(f"Connection error: {err}") from err
         except Exception as err:
-            raise UpdateFailed(f"Error fetching Trafikverket data: {err}") from err
+            raise UpdateFailed(f"Unexpected error fetching Trafikverket data: {err}") from err
 
-        data = _parse_response(text)
+        try:
+            data = _parse_response(text)
+        except TrafikinfoError as err:
+            raise UpdateFailed(str(err)) from err
         filtered = [e for e in data.events if self._include_event(e)]
         filtered = self._apply_road_filter(filtered)
-        # Best-effort local icon caching for picture cards
+        # Best-effort local icon caching for picture cards (run in background to not block)
         icon_ids = [e.icon_id for e in filtered if e.icon_id]
-        try:
-            await self._ensure_icons_cached([i for i in icon_ids if isinstance(i, str)])
-            await self._ensure_category_icons_cached()
-        except Exception as err:
-            _LOGGER.debug("Icon caching failed: %s", err)
+        self.hass.async_create_background_task(
+            self._cache_icons_background([i for i in icon_ids if isinstance(i, str)]),
+            f"{DOMAIN}_icon_cache",
+        )
         _LOGGER.debug(
             "Filter: mode=%s center=(%.5f,%.5f) radius_km=%.1f counties=%s events_before=%s events_after=%s",
             self._filter_mode,

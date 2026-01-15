@@ -1,0 +1,50 @@
+dismiss_event:
+  name: Dismiss event
+  description: Dismiss (hide) a traffic event from the dashboard.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: The config entry ID of the Trafikinfo SE integration.
+      required: true
+      selector:
+        text:
+    event_key:
+      name: Event key
+      description: The unique key identifying the event (situation_id|deviation_id).
+      required: true
+      selector:
+        text:
+    signature:
+      name: Signature
+      description: Optional event signature. If provided, the event will reappear when updated.
+      required: false
+      selector:
+        text:
+
+restore_event:
+  name: Restore event
+  description: Restore a previously dismissed traffic event.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: The config entry ID of the Trafikinfo SE integration.
+      required: true
+      selector:
+        text:
+    event_key:
+      name: Event key
+      description: The unique key identifying the event (situation_id|deviation_id).
+      required: true
+      selector:
+        text:
+
+restore_all_events:
+  name: Restore all events
+  description: Restore all dismissed traffic events for an integration.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: The config entry ID of the Trafikinfo SE integration.
+      required: true
+      selector:
+        text:
