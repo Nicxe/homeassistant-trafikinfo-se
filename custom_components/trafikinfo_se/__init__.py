@@ -112,10 +112,8 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         new_options[CONF_DISMISSED_EVENTS] = dismissed
         hass.config_entries.async_update_entry(entry, options=new_options)
 
-        # Trigger coordinator refresh to update sensor state
-        if hasattr(entry, "runtime_data") and entry.runtime_data:
-            coordinator = entry.runtime_data.coordinator
-            await coordinator.async_request_refresh()
+        # Note: We don't trigger a coordinator refresh here to avoid UI flickering.
+        # The card handles optimistic updates, and the sensor will sync on next poll.
 
         _LOGGER.debug("Dismissed event %s for entry %s", event_key, entry_id)
 
@@ -137,11 +135,6 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             new_options[CONF_DISMISSED_EVENTS] = dismissed
             hass.config_entries.async_update_entry(entry, options=new_options)
 
-            # Trigger coordinator refresh
-            if hasattr(entry, "runtime_data") and entry.runtime_data:
-                coordinator = entry.runtime_data.coordinator
-                await coordinator.async_request_refresh()
-
             _LOGGER.debug("Restored event %s for entry %s", event_key, entry_id)
 
     async def async_restore_all_events(call: ServiceCall) -> None:
@@ -157,7 +150,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         new_options[CONF_DISMISSED_EVENTS] = {}
         hass.config_entries.async_update_entry(entry, options=new_options)
 
-        # Trigger coordinator refresh
+        # Trigger coordinator refresh so restored events appear immediately
         if hasattr(entry, "runtime_data") and entry.runtime_data:
             coordinator = entry.runtime_data.coordinator
             await coordinator.async_request_refresh()
