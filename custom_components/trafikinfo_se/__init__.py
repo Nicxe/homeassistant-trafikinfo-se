@@ -8,14 +8,26 @@ from time import monotonic
 from typing import TYPE_CHECKING
 
 import homeassistant.helpers.config_validation as cv
+import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.util import slugify
+from homeassistant.util import dt as dt_util, slugify
 
 from homeassistant.helpers import entity_registry as er
 
-from .const import CONF_MESSAGE_TYPES, DEFAULT_MESSAGE_TYPES, DOMAIN
+from .const import (
+    ATTR_ENTRY_ID,
+    ATTR_EVENT_KEY,
+    ATTR_SIGNATURE,
+    CONF_DISMISSED_EVENTS,
+    CONF_MESSAGE_TYPES,
+    DEFAULT_MESSAGE_TYPES,
+    DOMAIN,
+    SERVICE_DISMISS_EVENT,
+    SERVICE_RESTORE_ALL_EVENTS,
+    SERVICE_RESTORE_EVENT,
+)
 from .coordinator import TrafikinfoCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,10 +49,139 @@ else:
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
+# Service schemas
+SERVICE_DISMISS_EVENT_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTRY_ID): cv.string,
+        vol.Required(ATTR_EVENT_KEY): cv.string,
+        vol.Optional(ATTR_SIGNATURE): cv.string,
+    }
+)
+
+SERVICE_RESTORE_EVENT_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTRY_ID): cv.string,
+        vol.Required(ATTR_EVENT_KEY): cv.string,
+    }
+)
+
+SERVICE_RESTORE_ALL_EVENTS_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ENTRY_ID): cv.string,
+    }
+)
+
+
+def _get_dismissed_events(entry: ConfigEntry) -> dict[str, dict]:
+    """Get dismissed events from entry options."""
+    dismissed = entry.options.get(CONF_DISMISSED_EVENTS, {})
+    if not isinstance(dismissed, dict):
+        return {}
+    return dismissed
+
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the integration (YAML is not supported)."""
+    await _async_register_services(hass)
     return True
+
+
+async def _async_register_services(hass: HomeAssistant) -> None:
+    """Register Trafikinfo SE services."""
+    if hass.services.has_service(DOMAIN, SERVICE_DISMISS_EVENT):
+        return  # Services already registered
+
+    async def async_dismiss_event(call: ServiceCall) -> None:
+        """Handle dismiss_event service call."""
+        entry_id = call.data[ATTR_ENTRY_ID]
+        event_key = call.data[ATTR_EVENT_KEY]
+        signature = call.data.get(ATTR_SIGNATURE)
+
+        entry = hass.config_entries.async_get_entry(entry_id)
+        if entry is None or entry.domain != DOMAIN:
+            _LOGGER.warning("Invalid entry_id for dismiss_event: %s", entry_id)
+            return
+
+        dismissed = dict(_get_dismissed_events(entry))
+        dismissed[event_key] = {
+            "signature": signature,
+            "dismissed_at": dt_util.utcnow().isoformat(),
+        }
+
+        new_options = dict(entry.options)
+        new_options[CONF_DISMISSED_EVENTS] = dismissed
+        hass.config_entries.async_update_entry(entry, options=new_options)
+
+        # Trigger coordinator refresh to update sensor state
+        if hasattr(entry, "runtime_data") and entry.runtime_data:
+            coordinator = entry.runtime_data.coordinator
+            await coordinator.async_request_refresh()
+
+        _LOGGER.debug("Dismissed event %s for entry %s", event_key, entry_id)
+
+    async def async_restore_event(call: ServiceCall) -> None:
+        """Handle restore_event service call."""
+        entry_id = call.data[ATTR_ENTRY_ID]
+        event_key = call.data[ATTR_EVENT_KEY]
+
+        entry = hass.config_entries.async_get_entry(entry_id)
+        if entry is None or entry.domain != DOMAIN:
+            _LOGGER.warning("Invalid entry_id for restore_event: %s", entry_id)
+            return
+
+        dismissed = dict(_get_dismissed_events(entry))
+        if event_key in dismissed:
+            del dismissed[event_key]
+
+            new_options = dict(entry.options)
+            new_options[CONF_DISMISSED_EVENTS] = dismissed
+            hass.config_entries.async_update_entry(entry, options=new_options)
+
+            # Trigger coordinator refresh
+            if hasattr(entry, "runtime_data") and entry.runtime_data:
+                coordinator = entry.runtime_data.coordinator
+                await coordinator.async_request_refresh()
+
+            _LOGGER.debug("Restored event %s for entry %s", event_key, entry_id)
+
+    async def async_restore_all_events(call: ServiceCall) -> None:
+        """Handle restore_all_events service call."""
+        entry_id = call.data[ATTR_ENTRY_ID]
+
+        entry = hass.config_entries.async_get_entry(entry_id)
+        if entry is None or entry.domain != DOMAIN:
+            _LOGGER.warning("Invalid entry_id for restore_all_events: %s", entry_id)
+            return
+
+        new_options = dict(entry.options)
+        new_options[CONF_DISMISSED_EVENTS] = {}
+        hass.config_entries.async_update_entry(entry, options=new_options)
+
+        # Trigger coordinator refresh
+        if hasattr(entry, "runtime_data") and entry.runtime_data:
+            coordinator = entry.runtime_data.coordinator
+            await coordinator.async_request_refresh()
+
+        _LOGGER.debug("Restored all events for entry %s", entry_id)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_DISMISS_EVENT,
+        async_dismiss_event,
+        schema=SERVICE_DISMISS_EVENT_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_RESTORE_EVENT,
+        async_restore_event,
+        schema=SERVICE_RESTORE_EVENT_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_RESTORE_ALL_EVENTS,
+        async_restore_all_events,
+        schema=SERVICE_RESTORE_ALL_EVENTS_SCHEMA,
+    )
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: TrafikinfoConfigEntry) -> bool:

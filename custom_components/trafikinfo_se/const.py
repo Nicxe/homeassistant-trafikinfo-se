@@ -68,6 +68,19 @@ TRAFIKVERKET_ICON_V2_URL_PREFIX = (
 # Local icon cache (served by HA at /local/*)
 ICON_CACHE_DIR = "trafikinfo_se/icons"
 
+# Dismissed events (user acknowledgment)
+CONF_DISMISSED_EVENTS = "dismissed_events"
+
+# Service names
+SERVICE_DISMISS_EVENT = "dismiss_event"
+SERVICE_RESTORE_EVENT = "restore_event"
+SERVICE_RESTORE_ALL_EVENTS = "restore_all_events"
+
+# Service attribute names
+ATTR_ENTRY_ID = "entry_id"
+ATTR_EVENT_KEY = "event_key"
+ATTR_SIGNATURE = "signature"
+
 ATTRIBUTION = "Data provided by Trafikverket (Trafikinfo)."
 
 

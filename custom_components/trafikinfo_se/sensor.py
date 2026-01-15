@@ -20,9 +20,11 @@ from homeassistant.util import slugify
 from .__init__ import TrafikinfoConfigEntry
 from .const import (
     ATTRIBUTION,
+    CONF_DISMISSED_EVENTS,
     CONF_MESSAGE_TYPES,
     DEFAULT_MESSAGE_TYPES,
     DOMAIN,
+    TRAFIKVERKET_ICONS_BASE_URL,
 )
 from .coordinator import TrafikinfoCoordinator, TrafikinfoData
 
@@ -283,6 +285,36 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
             model="Road.TrafficInfo Situation",
         )
 
+    def _get_dismissed_events(self) -> dict[str, dict]:
+        """Get dismissed events from entry options."""
+        dismissed = self._entry.options.get(CONF_DISMISSED_EVENTS, {})
+        if not isinstance(dismissed, dict):
+            return {}
+        return dismissed
+
+    def _is_event_dismissed(self, event: Any) -> bool:
+        """Check if an event is currently dismissed."""
+        dismissed = self._get_dismissed_events()
+        if not dismissed:
+            return False
+
+        event_key = self._incident_key(event)
+        if not event_key or event_key not in dismissed:
+            return False
+
+        dismissed_info = dismissed[event_key]
+        if not isinstance(dismissed_info, dict):
+            return True  # Dismissed without signature
+
+        stored_signature = dismissed_info.get("signature")
+        if not stored_signature:
+            # Permanent dismiss (no signature stored)
+            return True
+
+        # Check if event has been updated (signature changed)
+        current_signature = self._incident_signature(event)
+        return stored_signature == current_signature
+
     def _filtered_events(self) -> list[Any]:
         data: TrafikinfoData | None = self.coordinator.data
         if not data:
@@ -294,6 +326,16 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
             if _category_for_event(e) == self._message_type:
                 out.append(e)
         return out
+
+    def _visible_events(self) -> list[Any]:
+        """Get filtered events excluding dismissed ones."""
+        events = self._filtered_events()
+        return [e for e in events if not self._is_event_dismissed(e)]
+
+    def _dismissed_count(self) -> int:
+        """Count how many filtered events are currently dismissed."""
+        events = self._filtered_events()
+        return sum(1 for e in events if self._is_event_dismissed(e))
 
     def _incident_key(self, event: Any) -> str | None:
         """Stable key for one incident."""
@@ -399,7 +441,7 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
     def native_value(self) -> int | None:
         if not self.coordinator.data:
             return None
-        return len(self._filtered_events())
+        return len(self._visible_events())
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -408,22 +450,6 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
         if not data:
             return attrs
 
-        filtered = self._filtered_events()
-        sorted_events = self.coordinator.sort_events(filtered)
-        max_items = max(0, int(self.coordinator.max_items))
-        if max_items == 0:
-            events = []
-        else:
-            out = []
-            for e in sorted_events[:max_items]:
-                d = e.as_dict()
-                dist = self.coordinator.event_distance_km(e)
-                if dist is not None:
-                    # Rounded for readability in dashboards
-                    d["distance_km"] = round(float(dist), 2)
-                out.append(d)
-            events = out
-
         # Expose a simple icon URL surface for dashboards/templates.
         # Note: we intentionally do not set the HA `entity_picture` property anymore
         # (always use MDI icon), but we keep URLs in attributes for users who want them.
@@ -431,8 +457,40 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
         # Always expose the URL in attributes so users can use it in templates/cards.
         entity_picture_attr = picture_url
 
+        all_filtered = self._filtered_events()
+        visible = self._visible_events()
+        dismissed_count = self._dismissed_count()
+        sorted_events = self.coordinator.sort_events(visible)
+        max_items = max(0, int(self.coordinator.max_items))
+        if max_items == 0:
+            events = []
+        else:
+            out = []
+            for e in sorted_events[:max_items]:
+                d = e.as_dict()
+                icon_id = d.get("icon_id")
+                local_icon = self.coordinator.get_local_icon_url(icon_id)
+                if local_icon:
+                    d["icon_url"] = local_icon
+                elif icon_id:
+                    d["icon_url"] = f"{TRAFIKVERKET_ICONS_BASE_URL}/{quote(icon_id, safe='')}?type=png32x32"
+                elif picture_url:
+                    d["icon_url"] = picture_url
+                dist = self.coordinator.event_distance_km(e)
+                if dist is not None:
+                    # Rounded for readability in dashboards
+                    d["distance_km"] = round(float(dist), 2)
+                # Add event_key and signature for dismiss functionality
+                event_key = self._incident_key(e)
+                if event_key:
+                    d["event_key"] = event_key
+                    d["event_signature"] = self._incident_signature(e)
+                out.append(d)
+            events = out
+
         attrs.update(
             {
+                "entry_id": self._entry.entry_id,
                 "message_type": self._message_type,
                 "filter_mode": getattr(self.coordinator, "filter_mode", None),
                 "filter_counties": getattr(self.coordinator, "counties", None),
@@ -454,7 +512,9 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
                 "entity_picture": entity_picture_attr,
                 "icon_url": picture_url,
                 "events": events,
-                "events_total": len(filtered),
+                "events_total": len(all_filtered),
+                "events_visible": len(visible),
+                "dismissed_count": dismissed_count,
                 "max_items": max_items,
                 "last_modified": data.last_modified.isoformat()
                 if data.last_modified is not None
@@ -464,4 +524,3 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
             }
         )
         return attrs
-
