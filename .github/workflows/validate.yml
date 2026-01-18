@@ -2,19 +2,19 @@ name: Validate
 
 on:
   push:
-    branches: [dev]
-  pull_request:
-    branches: [beta, main]
-  schedule:
-    - cron: "0 0 * * *"
+    branches: [dev, beta, main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  validate-hacs:
-    runs-on: "ubuntu-latest"
-    steps:
-      - uses: "actions/checkout@v3"
-      - name: HACS validation
-        uses: "hacs/action@main"
-        with:
-          category: "plugin"
+  validate:
+    uses: nicxe/.github/.github/workflows/reusable-validate-plugin.yml@main
+    with:
+      hacs_category: "plugin"
+    secrets: inherit

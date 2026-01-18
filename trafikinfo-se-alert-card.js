@@ -1,12 +1,23 @@
 /*
- * Trafikinfo SE Alert Card
- * @license MIT (c) 2026
- *
  * UI/UX intentionally aligned with:
  * - www/smhi-alert-card.js
  * - www/krisinformation-alert-card.js
  */
-import { LitElement, html, css } from 'https://unpkg.com/lit?module';
+// Använd HA:s inbyggda Lit om tillgängligt, annars fallback till CDN
+const getLit = async () => {
+  // Home Assistant 2023.4+ exponerar Lit globalt
+  if (window.LitElement && window.litHtml) {
+    return {
+      LitElement: window.LitElement,
+      html: window.litHtml.html,
+      css: window.litHtml.css,
+    };
+  }
+  // Fallback för äldre HA-versioner eller fristående testning
+  return import('https://unpkg.com/lit@3.1.0?module');
+};
+
+const { LitElement, html, css } = await getLit();
 
 const LEAFLET_CSS_HREF = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
 const LEAFLET_JS_SRC = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
@@ -17,6 +28,8 @@ class TrafikinfoSeAlertCard extends LitElement {
     hass: {},
     config: {},
     _expanded: {},
+    _pendingDismiss: {},
+    _dismissingKeys: {},
   };
 
   static styles = css`
@@ -55,7 +68,7 @@ class TrafikinfoSeAlertCard extends LitElement {
     }
     .alert {
       display: grid;
-      grid-template-columns: auto 1fr auto;
+      grid-template-columns: auto 1fr;
       gap: 12px;
       align-items: start;
       padding: 12px;
@@ -130,6 +143,8 @@ class TrafikinfoSeAlertCard extends LitElement {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      flex: 1 1 auto;
+      min-width: 0;
     }
     /* In compact mode, apply a tiny optical offset so the text looks centered */
     .headline.compact {
@@ -162,13 +177,11 @@ class TrafikinfoSeAlertCard extends LitElement {
     .toggle-col {
       display: flex;
       justify-content: flex-end;
-      align-items: flex-start;
-      padding-top: 2px;
-      padding-right: 2px;
+      align-items: center;
+      margin-left: auto;
     }
     .toggle-col.compact {
       align-items: center;
-      padding-top: 0;
     }
     /* Compact toggle when placed in the right column (prevents it from consuming an extra line) */
     .details-toggle.compact {
@@ -197,7 +210,10 @@ class TrafikinfoSeAlertCard extends LitElement {
     }
     .geo-map {
       width: 100%;
-      height: var(--trafikinfo-alert-map-height, 170px);
+      aspect-ratio: var(--trafikinfo-alert-map-aspect, 16 / 9);
+      height: auto;
+      min-height: var(--trafikinfo-alert-map-min-height, 140px);
+      max-height: var(--trafikinfo-alert-map-max-height, 260px);
       /* Leaflet attaches panes/controls with high z-index; lock them into this local stacking context */
       position: relative;
       z-index: 0 !important;
@@ -246,11 +262,84 @@ class TrafikinfoSeAlertCard extends LitElement {
 
     a { color: var(--primary-color); text-decoration: none; }
     a:hover { text-decoration: underline; }
+
+    /* Dismiss animation */
+    .alert.dismissing {
+      animation: dismiss-fade 250ms ease-out forwards;
+      pointer-events: none;
+    }
+    @keyframes dismiss-fade {
+      0% { opacity: 1; transform: scale(1); }
+      100% { opacity: 0; transform: scale(0.96); }
+    }
+
+    /* Dismiss button - inline in title row */
+    .dismiss-btn {
+      width: 28px;
+      height: 28px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0.5;
+      transition: opacity 150ms ease, background 150ms ease;
+      padding: 0;
+      flex-shrink: 0;
+      margin-left: 4px;
+    }
+    .dismiss-btn:hover {
+      opacity: 1;
+      background: var(--secondary-background-color, rgba(0,0,0,0.1));
+    }
+    .dismiss-btn ha-icon {
+      --mdc-icon-size: 18px;
+      color: var(--secondary-text-color);
+    }
+
+    /* Dismissed count footer */
+    .dismissed-footer {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      padding: 8px var(--trafikinfo-alert-outer-padding, 0px);
+      color: var(--secondary-text-color);
+      font-size: 0.9em;
+    }
+    .dismissed-footer .restore-link {
+      color: var(--primary-color);
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .dismissed-footer .restore-link:hover {
+      text-decoration: underline;
+    }
   `;
 
   constructor() {
     super();
     this._maps = new Map();
+    this._pendingDismiss = new Set();
+    this._dismissingKeys = new Set();
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    // Rensa timers för att undvika minnesläckor
+    clearTimeout(this._holdTimer);
+    clearTimeout(this._tapTimer);
+    // Rensa Leaflet-kartinstanser
+    for (const [, entry] of this._maps.entries()) {
+      try {
+        entry?.map?.remove?.();
+      } catch (e) {
+        // Ignorera fel vid cleanup
+      }
+    }
+    this._maps.clear();
   }
 
   setConfig(config) {
@@ -317,6 +406,9 @@ class TrafikinfoSeAlertCard extends LitElement {
       .filter(Boolean);
 
     const filtered = events.filter((e) => {
+      // Optimistic dismiss: hide events that are pending dismissal
+      if (this._pendingDismiss?.has(e.event_key)) return false;
+
       const sev = this._severityBucket(e);
       // Important traffic info typically has no severity; ignore severity filter there
       const sevOk = preset === 'important' || filterSev.length === 0 || filterSev.includes(sev);
@@ -403,11 +495,16 @@ class TrafikinfoSeAlertCard extends LitElement {
     return 'sev-message';
   }
 
+  _handleIconError(e) {
+    const img = e.target;
+    if (img) img.remove();
+  }
+
   _iconTemplate(item) {
     if (this.config.show_icon === false) return html``;
     const url = String(item?.icon_url || '').trim();
     if (url) {
-      return html`<img class="icon" src="${url}" alt="icon" onerror="this.onerror=null;this.remove();" />`;
+      return html`<img class="icon" src="${url}" alt="icon" @error=${(e) => this._handleIconError(e)} />`;
     }
     return html`<ha-icon class="icon" icon="mdi:alert" aria-hidden="true"></ha-icon>`;
   }
@@ -422,9 +519,6 @@ class TrafikinfoSeAlertCard extends LitElement {
       ? (this.config.title || stateObj?.attributes?.friendly_name || 'Trafikinfo')
       : undefined;
 
-    const mapHeight = Number(this.config?.map_height || 170);
-    const mapStyle = this.config?.show_map ? `--trafikinfo-alert-map-height: ${mapHeight}px;` : '';
-
     const eventsTotal = Number(stateObj?.attributes?.events_total || 0);
     const sensorMaxItems = Number(stateObj?.attributes?.max_items ?? null);
     const hasMoreButCapped = events.length === 0 && eventsTotal > 0 && sensorMaxItems === 0;
@@ -433,11 +527,27 @@ class TrafikinfoSeAlertCard extends LitElement {
       ? t('max_items_zero')
       : this._emptyTextForCategory(category);
 
+    // Dismissed count from sensor attributes
+    const dismissedCount = Number(stateObj?.attributes?.dismissed_count || 0);
+    const showDismissedFooter = this.config?.enable_dismiss === true
+      && this.config?.show_dismissed_count !== false
+      && dismissedCount > 0;
+
+    const dismissedText = dismissedCount === 1
+      ? t('dismissed_count_one')
+      : t('dismissed_count').replace('{count}', String(dismissedCount));
+
     return html`
-      <ha-card .header=${header} style=${mapStyle}>
+      <ha-card .header=${header}>
         ${events.length === 0
           ? html`<div class="empty">${emptyText}</div>`
           : html`<div class="alerts">${this._renderGrouped(events)}</div>`}
+        ${showDismissedFooter ? html`
+          <div class="dismissed-footer">
+            <span>${dismissedText}</span>
+            <span class="restore-link" @click=${(e) => this._restoreAllEvents(e)}>${t('restore_all')}</span>
+          </div>
+        ` : html``}
       </ha-card>
     `;
   }
@@ -645,10 +755,12 @@ class TrafikinfoSeAlertCard extends LitElement {
     const detailsBlocks = buildSectionBlocks(detailsKeys, 'details');
     const expandable = sectionHasPotentialContent(detailsKeys);
     const isCompact = !expanded && inlineBlocks.length === 0;
+    const showDismiss = this.config?.enable_dismiss === true && item?.event_key;
+    const isDismissing = this._dismissingKeys?.has(item?.event_key);
 
     return html`
       <div
-        class="alert ${sevClass} ${sevBgClass} ${isCompact ? 'compact' : ''}"
+        class="alert ${sevClass} ${sevBgClass} ${isCompact ? 'compact' : ''} ${isDismissing ? 'dismissing' : ''}"
         role="button"
         tabindex="0"
         aria-label="${headline}"
@@ -660,6 +772,40 @@ class TrafikinfoSeAlertCard extends LitElement {
         <div class="content ${isCompact ? 'compact' : ''}">
           <div class="title">
             <div class="headline ${isCompact ? 'compact' : ''}">${headline}</div>
+            ${expandable ? html`
+              <div class="toggle-col ${isCompact ? 'compact' : ''}">
+                <div
+                  class="details-toggle compact"
+                  role="button"
+                  tabindex="0"
+                  aria-expanded="${expanded}"
+                  title="${expanded ? t('hide_details') : t('show_details')}"
+                  @click=${(e) => this._toggleDetails(e, item, idx)}
+                  @pointerdown=${(e) => e.stopPropagation()}
+                  @pointerup=${(e) => e.stopPropagation()}
+                  @keydown=${(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      this._toggleDetails(e, item, idx);
+                    }
+                    e.stopPropagation();
+                  }}
+                >
+                  ${expanded ? t('hide_details') : t('show_details')}
+                </div>
+              </div>
+            ` : html``}
+            ${showDismiss ? html`
+              <button
+                class="dismiss-btn"
+                title="${t('dismiss')}"
+                @click=${(e) => this._dismissEvent(e, item)}
+                @pointerdown=${(e) => e.stopPropagation()}
+                @pointerup=${(e) => e.stopPropagation()}
+              >
+                <ha-icon icon="mdi:eye-off-outline"></ha-icon>
+              </button>
+            ` : html``}
           </div>
           ${inlineBlocks.length > 0 ? html`${inlineBlocks}` : html``}
           ${expandable
@@ -672,28 +818,6 @@ class TrafikinfoSeAlertCard extends LitElement {
               `
             : html``}
         </div>
-        ${expandable ? html`
-          <div class="toggle-col ${isCompact ? 'compact' : ''}">
-            <div
-              class="details-toggle compact"
-              role="button"
-              tabindex="0"
-              title="${expanded ? t('hide_details') : t('show_details')}"
-              @click=${(e) => this._toggleDetails(e, item, idx)}
-              @pointerdown=${(e) => e.stopPropagation()}
-              @pointerup=${(e) => e.stopPropagation()}
-              @keydown=${(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  this._toggleDetails(e, item, idx);
-                }
-                e.stopPropagation();
-              }}
-            >
-              ${expanded ? t('hide_details') : t('show_details')}
-            </div>
-          </div>
-        ` : html`<div></div>`}
       </div>`;
   }
 
@@ -842,6 +966,85 @@ class TrafikinfoSeAlertCard extends LitElement {
     this._expanded = { ...this._expanded, [key]: !this._expanded[key] };
   }
 
+  async _dismissEvent(e, item) {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const stateObj = this._stateObj();
+    if (!stateObj) return;
+
+    const entryId = stateObj.attributes?.entry_id;
+    const eventKey = item?.event_key;
+    if (!entryId || !eventKey) {
+      console.warn('Cannot dismiss: missing entry_id or event_key');
+      return;
+    }
+
+    // Start dismiss animation
+    this._dismissingKeys = new Set(this._dismissingKeys);
+    this._dismissingKeys.add(eventKey);
+    this.requestUpdate();
+
+    // Wait for animation to complete
+    await new Promise((resolve) => setTimeout(resolve, 250));
+
+    // Move from animating to hidden
+    this._dismissingKeys = new Set(this._dismissingKeys);
+    this._dismissingKeys.delete(eventKey);
+    this._pendingDismiss = new Set(this._pendingDismiss);
+    this._pendingDismiss.add(eventKey);
+    this.requestUpdate();
+
+    const serviceData = {
+      entry_id: entryId,
+      event_key: eventKey,
+    };
+
+    // If dismiss_behavior is 'until_update', include signature
+    if (this.config?.dismiss_behavior === 'until_update') {
+      const signature = item?.event_signature;
+      if (signature) {
+        serviceData.signature = signature;
+      }
+    }
+
+    try {
+      await this.hass.callService('trafikinfo_se', 'dismiss_event', serviceData);
+    } catch (err) {
+      console.error('Failed to dismiss event:', err);
+      // On error, restore the event in UI
+      this._pendingDismiss = new Set(this._pendingDismiss);
+      this._pendingDismiss.delete(eventKey);
+      this.requestUpdate();
+    }
+  }
+
+  async _restoreAllEvents(e) {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const stateObj = this._stateObj();
+    if (!stateObj) return;
+
+    const entryId = stateObj.attributes?.entry_id;
+    if (!entryId) {
+      console.warn('Cannot restore: missing entry_id');
+      return;
+    }
+
+    try {
+      await this.hass.callService('trafikinfo_se', 'restore_all_events', {
+        entry_id: entryId,
+      });
+      // Clear local pending state so events can appear again
+      this._pendingDismiss = new Set();
+      this._dismissingKeys = new Set();
+      this.requestUpdate();
+    } catch (err) {
+      console.error('Failed to restore events:', err);
+    }
+  }
+
   _onPointerDown(e) {
     if (e.button !== 0) return; // left click only
     clearTimeout(this._holdTimer);
@@ -889,13 +1092,141 @@ class TrafikinfoSeAlertCard extends LitElement {
   }
 
   _fmtTs(value) {
+    return this._formatDate(value);
+  }
+
+  _formatDate(value) {
     if (!value) return '';
-    try {
-      const d = new Date(value);
-      return d.toLocaleString();
-    } catch (e) {
-      return String(value);
+    const date = this._parseDate(value);
+    if (!date) return String(value);
+    const locale = (this.hass?.language || this.hass?.locale?.language || 'en').toLowerCase();
+    const format = this.config?.date_format || 'locale';
+    if (format === 'weekday_time') {
+      return this._formatDateParts(
+        date,
+        locale,
+        { weekday: 'long' },
+        { hour: '2-digit', minute: '2-digit' },
+      );
     }
+    if (format === 'day_month_time') {
+      return this._formatDateParts(
+        date,
+        locale,
+        { day: 'numeric', month: 'long' },
+        { hour: '2-digit', minute: '2-digit' },
+      );
+    }
+    if (format === 'day_month_time_year') {
+      return this._formatDateParts(
+        date,
+        locale,
+        { day: 'numeric', month: 'long', year: 'numeric' },
+        { hour: '2-digit', minute: '2-digit' },
+      );
+    }
+    return date.toLocaleString(locale);
+  }
+
+  _formatDateParts(date, locale, dateOptions, timeOptions) {
+    const safeTimeOptions = timeOptions ? { ...timeOptions } : null;
+    if (safeTimeOptions && !Object.prototype.hasOwnProperty.call(safeTimeOptions, 'hour12')) {
+      safeTimeOptions.hour12 = false;
+    }
+    const dateStr = dateOptions
+      ? new Intl.DateTimeFormat(locale, dateOptions).format(date)
+      : '';
+    const timeStr = safeTimeOptions
+      ? new Intl.DateTimeFormat(locale, safeTimeOptions).format(date)
+      : '';
+    if (dateStr && timeStr) return `${dateStr} ${timeStr}`;
+    return dateStr || timeStr || '';
+  }
+
+  _parseDate(value) {
+    if (!value) return null;
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? null : value;
+    }
+    if (typeof value === 'number') {
+      const numericDate = new Date(value);
+      return Number.isNaN(numericDate.getTime()) ? null : numericDate;
+    }
+    const raw = String(value).trim();
+    if (!raw) return null;
+    let normalized = raw;
+    if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(raw)) {
+      normalized = raw.replace(' ', 'T');
+    }
+    const parsed = new Date(normalized);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  _formatDate(value) {
+    if (!value) return '';
+    const date = this._parseDate(value);
+    if (!date) return String(value);
+    const locale = (this.hass?.language || this.hass?.locale?.language || 'en').toLowerCase();
+    const format = this.config?.date_format || 'locale';
+    if (format === 'weekday_time') {
+      return this._formatDateParts(
+        date,
+        locale,
+        { weekday: 'long' },
+        { hour: '2-digit', minute: '2-digit' },
+      );
+    }
+    if (format === 'day_month_time') {
+      return this._formatDateParts(
+        date,
+        locale,
+        { day: 'numeric', month: 'long' },
+        { hour: '2-digit', minute: '2-digit' },
+      );
+    }
+    if (format === 'day_month_time_year') {
+      return this._formatDateParts(
+        date,
+        locale,
+        { day: 'numeric', month: 'long', year: 'numeric' },
+        { hour: '2-digit', minute: '2-digit' },
+      );
+    }
+    return date.toLocaleString(locale);
+  }
+
+  _formatDateParts(date, locale, dateOptions, timeOptions) {
+    const safeTimeOptions = timeOptions ? { ...timeOptions } : null;
+    if (safeTimeOptions && !Object.prototype.hasOwnProperty.call(safeTimeOptions, 'hour12')) {
+      safeTimeOptions.hour12 = false;
+    }
+    const dateStr = dateOptions
+      ? new Intl.DateTimeFormat(locale, dateOptions).format(date)
+      : '';
+    const timeStr = safeTimeOptions
+      ? new Intl.DateTimeFormat(locale, safeTimeOptions).format(date)
+      : '';
+    if (dateStr && timeStr) return `${dateStr} ${timeStr}`;
+    return dateStr || timeStr || '';
+  }
+
+  _parseDate(value) {
+    if (!value) return null;
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? null : value;
+    }
+    if (typeof value === 'number') {
+      const numericDate = new Date(value);
+      return Number.isNaN(numericDate.getTime()) ? null : numericDate;
+    }
+    const raw = String(value).trim();
+    if (!raw) return null;
+    let normalized = raw;
+    if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(raw)) {
+      normalized = raw.replace(' ', 'T');
+    }
+    const parsed = new Date(normalized);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 
   _showHeader() {
@@ -1020,6 +1351,8 @@ class TrafikinfoSeAlertCard extends LitElement {
       return;
     }
     const sig = `${pts.length}|${String(pts[0]?.[0] || '')},${String(pts[0]?.[1] || '')}|${this._severityBucket(item)}`;
+    const mapZoom = Number.isFinite(this.config?.map_zoom) ? this.config.map_zoom : null;
+    const zoomKey = mapZoom === null ? 'auto' : String(mapZoom);
     const existing = this._maps.get(key);
     const containerChanged = existing?.container && existing.container !== containerEl;
     if (existing && containerChanged) {
@@ -1043,10 +1376,11 @@ class TrafikinfoSeAlertCard extends LitElement {
         maxZoom: 18,
         attribution: '&copy; OpenStreetMap contributors',
       }).addTo(map);
-      entry = { map, layer: null, sig: '', container: containerEl };
+      entry = { map, layer: null, sig: '', container: containerEl, zoomKey: 'auto' };
       this._maps.set(key, entry);
     }
 
+    let layerUpdated = false;
     if (entry.sig !== sig) {
       if (statusEl) {
         statusEl.textContent = this._t('map_rendering');
@@ -1055,23 +1389,44 @@ class TrafikinfoSeAlertCard extends LitElement {
       try { entry.layer?.remove?.(); } catch (e) {}
 
       const style = this._severityStyle(item);
-      const zoomOutSteps = 2; // default: zoom out a bit for better overview
       if (pts.length === 1) {
         entry.layer = L.circleMarker(pts[0], { ...style, radius: 8 }).addTo(entry.map);
-        entry.map.setView(pts[0], 14);
-        try { entry.map.zoomOut(zoomOutSteps); } catch (e) {}
       } else {
         // If multiple points, draw a polyline and fit bounds.
         entry.layer = L.polyline(pts, style).addTo(entry.map);
+      }
+      entry.sig = sig;
+      layerUpdated = true;
+    }
+
+    if (layerUpdated || entry.zoomKey !== zoomKey) {
+      const zoomOutSteps = 2; // default: zoom out a bit for better overview
+      if (pts.length === 1) {
+        if (mapZoom !== null) {
+          entry.map.setView(pts[0], mapZoom);
+        } else {
+          entry.map.setView(pts[0], 14);
+          try { entry.map.zoomOut(zoomOutSteps); } catch (e) {}
+        }
+      } else {
         try {
-          const bounds = entry.layer.getBounds?.();
+          const bounds = entry.layer?.getBounds?.();
           if (bounds && bounds.isValid && bounds.isValid()) {
-            entry.map.fitBounds(bounds, { padding: [12, 12] });
-            try { entry.map.zoomOut(zoomOutSteps); } catch (e) {}
+            if (mapZoom !== null) {
+              const center = bounds.getCenter?.();
+              if (center) {
+                entry.map.setView(center, mapZoom);
+              } else {
+                entry.map.fitBounds(bounds, { padding: [12, 12] });
+              }
+            } else {
+              entry.map.fitBounds(bounds, { padding: [12, 12] });
+              try { entry.map.zoomOut(zoomOutSteps); } catch (e) {}
+            }
           }
         } catch (e) {}
       }
-      entry.sig = sig;
+      entry.zoomKey = zoomKey;
     }
 
     requestAnimationFrame(() => {
@@ -1121,7 +1476,10 @@ class TrafikinfoSeAlertCard extends LitElement {
           }
         });
       }
-    })();
+    })().catch((err) => {
+      window.__trafikinfoSeLeafletPromise = null;
+      throw err;
+    });
 
     return window.__trafikinfoSeLeafletPromise;
   }
@@ -1220,6 +1578,10 @@ class TrafikinfoSeAlertCard extends LitElement {
         map_loading_leaflet: 'Loading map (Leaflet)…',
         map_rendering: 'Rendering location…',
         map_failed: 'Map failed to load (blocked by browser/HA CSP)',
+        dismiss: 'Dismiss',
+        dismissed_count: '{count} dismissed',
+        dismissed_count_one: '1 dismissed',
+        restore_all: 'Restore all',
       },
       sv: {
         no_alerts: 'Inga händelser',
@@ -1250,6 +1612,10 @@ class TrafikinfoSeAlertCard extends LitElement {
         map_loading_leaflet: 'Laddar karta (Leaflet)…',
         map_rendering: 'Ritar plats…',
         map_failed: 'Kartan kunde inte laddas (blockerad av webbläsare/HA CSP)',
+        dismiss: 'Dölj',
+        dismissed_count: '{count} dolda',
+        dismissed_count_one: '1 dold',
+        restore_all: 'Återställ alla',
       },
     };
     return (dict[lang] || dict.en)[key] || key;
@@ -1267,12 +1633,22 @@ class TrafikinfoSeAlertCard extends LitElement {
     if (normalized.show_icon === undefined) normalized.show_icon = true;
     if (normalized.severity_background === undefined) normalized.severity_background = false;
     if (normalized.show_map === undefined) normalized.show_map = false;
-    if (normalized.map_height === undefined) normalized.map_height = 170;
     if (normalized.map_zoom_controls === undefined) normalized.map_zoom_controls = true;
     if (normalized.map_scroll_wheel === undefined) normalized.map_scroll_wheel = false;
+    if (normalized.map_zoom === '' || normalized.map_zoom === null || normalized.map_zoom === undefined) {
+      normalized.map_zoom = null;
+    } else {
+      const zoomVal = Number(normalized.map_zoom);
+      normalized.map_zoom = Number.isFinite(zoomVal) ? Math.max(0, Math.min(18, zoomVal)) : null;
+    }
     if (normalized.max_items === undefined) normalized.max_items = 0;
     if (normalized.sort_order === undefined) normalized.sort_order = 'severity_then_time';
+    if (normalized.date_format === undefined) normalized.date_format = 'locale';
     if (normalized.group_by === undefined) normalized.group_by = 'none';
+    const allowedDateFormats = ['locale', 'day_month_time', 'weekday_time', 'day_month_time_year'];
+    if (!allowedDateFormats.includes(normalized.date_format)) {
+      normalized.date_format = 'locale';
+    }
 
     // Headline customization (optional). When empty/not set: keep old auto headline behavior.
     if (!Array.isArray(normalized.headline_fields)) normalized.headline_fields = [];
@@ -1294,6 +1670,14 @@ class TrafikinfoSeAlertCard extends LitElement {
     if (normalized.show_lanes_restricted === undefined) normalized.show_lanes_restricted = false;
     if (normalized.show_safety_related === undefined) normalized.show_safety_related = false;
     if (normalized.show_suspended === undefined) normalized.show_suspended = false;
+
+    // Dismiss/acknowledge functionality
+    if (normalized.enable_dismiss === undefined) normalized.enable_dismiss = false;
+    if (normalized.dismiss_behavior === undefined) normalized.dismiss_behavior = 'until_update';
+    if (!['until_update', 'permanent'].includes(normalized.dismiss_behavior)) {
+      normalized.dismiss_behavior = 'until_update';
+    }
+    if (normalized.show_dismissed_count === undefined) normalized.show_dismissed_count = true;
 
     if (!Array.isArray(normalized.filter_severities)) normalized.filter_severities = [];
     // `filter_roads` is edited as a string for better UX; normalize to array here.
@@ -1334,7 +1718,7 @@ class TrafikinfoSeAlertCard extends LitElement {
     if (Object.prototype.hasOwnProperty.call(normalized, 'show_road_number')) delete normalized.show_road_number;
     if (Object.prototype.hasOwnProperty.call(normalized, 'hide_when_empty')) delete normalized.hide_when_empty;
     // Ensure numeric
-    normalized.map_height = Number(normalized.map_height || 170);
+    if (Object.prototype.hasOwnProperty.call(normalized, 'map_height')) delete normalized.map_height;
     return normalized;
   }
 
@@ -1368,11 +1752,12 @@ class TrafikinfoSeAlertCard extends LitElement {
       show_icon: true,
       severity_background: false,
       show_map: false,
-      map_height: 170,
+      map_zoom: null,
       map_zoom_controls: true,
       map_scroll_wheel: false,
       max_items: 0,
       sort_order: 'severity_then_time',
+      date_format: 'locale',
       group_by: 'none',
       filter_severities: [],
       filter_roads: [],
@@ -1428,6 +1813,7 @@ class TrafikinfoSeViktigTrafikinformationCard extends TrafikinfoSeAlertCard {
       // Headline: empty means "auto" (backwards compatible default)
       headline_fields: [],
       headline_separator: ' ',
+      date_format: 'locale',
       // If true: period+text are hidden behind the details toggle by default.
       // If false: show everything directly (no details toggle).
       use_details: true,
@@ -1457,6 +1843,9 @@ class TrafikinfoSeAlertCardEditor extends LitElement {
 
   static styles = css`
     .container { padding: 8px 0 0 0; }
+    .map-hint { margin: 10px 0 12px 0; padding: 0 12px; }
+    .map-hint .hint-title { font-weight: 600; margin-bottom: 4px; }
+    .map-hint .hint-text { color: var(--secondary-text-color); font-size: 0.95em; line-height: 1.4; }
     .meta-fields { margin: 12px 0; padding: 8px 12px; }
     .meta-fields-title { color: var(--secondary-text-color); margin-bottom: 6px; }
     .meta-row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 8px; padding: 6px 0; }
@@ -1466,12 +1855,34 @@ class TrafikinfoSeAlertCardEditor extends LitElement {
   `;
 
   setConfig(config) {
-    this._config = config;
+    const next = { ...config };
+    if (Object.prototype.hasOwnProperty.call(next, 'map_height')) delete next.map_height;
+    this._config = next;
   }
 
   render() {
     if (!this.hass || !this._config) return html``;
     const preset = String(this._config.preset || 'accident');
+    const lang = (this.hass?.language || this.hass?.locale?.language || 'en').toLowerCase();
+    const dateFormatOptions = lang.startsWith('sv')
+      ? [
+          { value: 'locale', label: 'Systemstandard' },
+          { value: 'day_month_time', label: '14 januari 13:00' },
+          { value: 'weekday_time', label: 'Onsdag 13:00' },
+          { value: 'day_month_time_year', label: '14 januari 2026 13:00' },
+        ]
+      : [
+          { value: 'locale', label: 'System default' },
+          { value: 'day_month_time', label: '14 January 13:00' },
+          { value: 'weekday_time', label: 'Wednesday 13:00' },
+          { value: 'day_month_time_year', label: '14 January 2026 13:00' },
+        ];
+    const dateFormatLabel = lang.startsWith('sv') ? 'Datumformat' : 'Date format';
+    const dateFormatField = {
+      name: 'date_format',
+      label: dateFormatLabel,
+      selector: { select: { mode: 'dropdown', options: dateFormatOptions } },
+    };
     const schema = [
       // Restrict the picker to the Trafikinfo SE integration sensors for clarity.
       { name: 'entity', label: 'Entity', required: true, selector: { entity: { domain: 'sensor', integration: 'trafikinfo_se' } } },
@@ -1498,18 +1909,28 @@ class TrafikinfoSeAlertCardEditor extends LitElement {
       { name: 'show_header', label: 'Show header', selector: { boolean: {} } },
       { name: 'show_icon', label: 'Show icon', selector: { boolean: {} } },
       { name: 'severity_background', label: 'Severity background', selector: { boolean: {} } },
+      { name: 'enable_dismiss', label: 'Enable dismiss', selector: { boolean: {} } },
+      {
+        name: 'dismiss_behavior',
+        label: 'Dismiss behavior',
+        selector: { select: { mode: 'dropdown', options: [
+          { value: 'until_update', label: 'Show again when updated' },
+          { value: 'permanent', label: 'Permanently hidden' },
+        ] } },
+      },
+      { name: 'show_dismissed_count', label: 'Show dismissed count', selector: { boolean: {} } },
       // actions
       { name: 'tap_action', label: 'Tap action', selector: { ui_action: {} } },
       { name: 'double_tap_action', label: 'Double tap action', selector: { ui_action: {} } },
       { name: 'hold_action', label: 'Hold action', selector: { ui_action: {} } },
     ];
     if (preset === 'important') {
-      schema.splice(6, 0, { name: 'use_details', label: 'Use details (collapse/expand)', selector: { boolean: {} } });
+      schema.splice(6, 0, { name: 'use_details', label: 'Use details (collapse/expand)', selector: { boolean: {} } }, dateFormatField);
     }
     if (preset !== 'important') {
       schema.splice(6, 0,
         { name: 'show_map', label: 'Show map (location)', selector: { boolean: {} } },
-        { name: 'map_height', label: 'Map height (px)', selector: { number: { min: 90, max: 420, mode: 'box' } } },
+        { name: 'map_zoom', label: 'Map zoom level (0 = world, 18 = street)', selector: { number: { min: 0, max: 18, mode: 'box' } } },
         { name: 'map_zoom_controls', label: 'Map zoom controls (+/−)', selector: { boolean: {} } },
         { name: 'map_scroll_wheel', label: 'Map scroll wheel zoom', selector: { boolean: {} } },
         { name: 'max_items', label: 'Max items', selector: { number: { min: 0, mode: 'box' } } },
@@ -1520,6 +1941,7 @@ class TrafikinfoSeAlertCardEditor extends LitElement {
             { value: 'time_desc', label: 'Time (newest first)' },
           ] } },
         },
+        dateFormatField,
         { name: 'group_by', label: 'Group by', selector: { select: { mode: 'dropdown', options: [
           { value: 'none', label: 'No grouping' },
           { value: 'road', label: 'By road' },
@@ -1545,13 +1967,17 @@ class TrafikinfoSeAlertCardEditor extends LitElement {
       show_header: this._config.show_header !== undefined ? this._config.show_header : true,
       show_icon: this._config.show_icon !== undefined ? this._config.show_icon : true,
       severity_background: this._config.severity_background !== undefined ? this._config.severity_background : false,
+      enable_dismiss: this._config.enable_dismiss !== undefined ? this._config.enable_dismiss : false,
+      dismiss_behavior: this._config.dismiss_behavior || 'until_update',
+      show_dismissed_count: this._config.show_dismissed_count !== undefined ? this._config.show_dismissed_count : true,
       show_map: this._config.show_map !== undefined ? this._config.show_map : false,
-      map_height: this._config.map_height !== undefined ? this._config.map_height : 170,
+      map_zoom: this._config.map_zoom !== undefined && this._config.map_zoom !== null ? this._config.map_zoom : undefined,
       map_zoom_controls: this._config.map_zoom_controls !== undefined ? this._config.map_zoom_controls : true,
       map_scroll_wheel: this._config.map_scroll_wheel !== undefined ? this._config.map_scroll_wheel : false,
       use_details: this._config.use_details !== undefined ? this._config.use_details : true,
       max_items: this._config.max_items ?? 0,
       sort_order: this._config.sort_order || 'severity_then_time',
+      date_format: this._config.date_format || 'locale',
       group_by: this._config.group_by || 'none',
       filter_severities: this._config.filter_severities || [],
       filter_roads: Array.isArray(this._config.filter_roads)
@@ -1594,6 +2020,17 @@ class TrafikinfoSeAlertCardEditor extends LitElement {
     const schemaTop = schema.filter((s) => !['tap_action','double_tap_action','hold_action'].includes(s.name));
     const schemaActions = schema.filter((s) => ['tap_action','double_tap_action','hold_action'].includes(s.name));
 
+    const zoomHint = lang.startsWith('sv')
+      ? {
+          title: 'Zoomnivå',
+          text: '0 = hela världen, 18 = gatunivå (mycket nära). Lämna tomt för automatisk zoom.',
+        }
+      : {
+          title: 'Zoom level',
+          text: '0 = whole world, 18 = street level (very close). Leave empty for automatic zoom.',
+        };
+    const showZoomHint = preset !== 'important' && data.show_map;
+
     return html`
       <div class="container">
         <ha-form
@@ -1603,6 +2040,12 @@ class TrafikinfoSeAlertCardEditor extends LitElement {
           .computeLabel=${this._computeLabel}
           @value-changed=${this._valueChanged}
         ></ha-form>
+        ${showZoomHint ? html`
+          <div class="map-hint">
+            <div class="hint-title">${zoomHint.title}</div>
+            <div class="hint-text">${zoomHint.text}</div>
+          </div>
+        ` : html``}
         ${preset === 'important' ? html`` : html`
           <div class="meta-fields">
             ${filledOrder.map((key, index) => {
@@ -1750,6 +2193,7 @@ class TrafikinfoSeAlertCardEditor extends LitElement {
   }
 
   _computeLabel = (schema) => {
+    if (schema.label) return schema.label;
     const labels = {
       entity: 'Entity',
       title: 'Title',
@@ -1759,12 +2203,13 @@ class TrafikinfoSeAlertCardEditor extends LitElement {
       show_icon: 'Show icon',
       severity_background: 'Severity background',
       show_map: 'Show map (location)',
-      map_height: 'Map height (px)',
+      map_zoom: 'Map zoom level (0 = world, 18 = street)',
       map_zoom_controls: 'Map zoom controls (+/−)',
       map_scroll_wheel: 'Map scroll wheel zoom',
       use_details: 'Use details (collapse/expand)',
       max_items: 'Max items',
       sort_order: 'Sort order',
+      date_format: 'Date format',
       group_by: 'Group by',
       filter_severities: 'Filter severities',
       filter_roads: 'Filter roads (comma/semicolon-separated)',
@@ -1820,5 +2265,3 @@ TrafikinfoSeAlertCard.prototype._runAction = function (action, item) {
     this.hass.callService(domain, service, action.service_data || {});
   }
 };
-
-
