@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 import logging
 from typing import Any
 import xml.etree.ElementTree as ET
 
+import aiohttp
 import voluptuous as vol
 
 from homeassistant import config_entries
@@ -47,6 +49,7 @@ from .const import (
     SORT_MODE_RELEVANCE,
     SITUATION_SCHEMA_VERSION,
     TRAFIKVERKET_DATACACHE_URL,
+    get_user_agent,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -99,24 +102,34 @@ async def _async_test_api_key(hass: HomeAssistant, api_key: str) -> _TestResult:
     payload = _build_test_request_xml(api_key)
 
     try:
-        async with session.post(
-            TRAFIKVERKET_DATACACHE_URL,
-            data=payload.encode("utf-8"),
-            headers={"Content-Type": "text/xml; charset=utf-8"},
-            timeout=15,
-        ) as resp:
-            text = await resp.text()
-            if resp.status != 200:
-                _LOGGER.debug(
-                    "Trafikverket test request failed: HTTP %s body=%s",
-                    resp.status,
-                    text[:500],
-                )
-                raise CannotConnect(f"HTTP {resp.status}")
+        async with asyncio.timeout(15):
+            async with session.post(
+                TRAFIKVERKET_DATACACHE_URL,
+                data=payload.encode("utf-8"),
+                headers={
+                    "Content-Type": "text/xml; charset=utf-8",
+                    "User-Agent": get_user_agent(hass),
+                },
+            ) as resp:
+                text = await resp.text()
+                if resp.status in (401, 403):
+                    return _TestResult(ok=False, error_message="Invalid authentication key")
+                if resp.status != 200:
+                    _LOGGER.debug(
+                        "Trafikverket test request failed: HTTP %s body=%s",
+                        resp.status,
+                        text[:500],
+                    )
+                    raise CannotConnect(f"HTTP {resp.status}")
 
+    except asyncio.TimeoutError as err:
+        raise CannotConnect("Connection timeout") from err
+    except aiohttp.ClientError as err:
+        raise CannotConnect(f"Connection error: {err}") from err
     except CannotConnect:
         raise
     except Exception as err:
+        _LOGGER.exception("Unexpected error testing API key")
         raise CannotConnect(str(err)) from err
 
     err_msg = _parse_error_message(text)
