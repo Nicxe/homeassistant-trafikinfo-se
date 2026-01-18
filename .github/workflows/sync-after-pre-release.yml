@@ -2,7 +2,7 @@ name: Sync beta back to dev
 
 on:
   release:
-    types: [prereleased]
+    types: [published]
 
 permissions:
   contents: write
