@@ -127,7 +127,28 @@
     "error": {
       "missing_counties": "Välj minst ett län (eller 'Hela Sverige')."
     }
+  },
+  "entity": {
+    "sensor": {
+      "viktig_trafikinformation": {
+        "name": "Viktig trafikinformation"
+      },
+      "hinder": {
+        "name": "Hinder"
+      },
+      "olycka": {
+        "name": "Olycka"
+      },
+      "restriktion": {
+        "name": "Restriktioner"
+      },
+      "trafikmeddelande": {
+        "name": "Trafikmeddelande"
+      },
+      "vagarbete": {
+        "name": "Vägarbete"
+      }
+    }
   }
 }
-
 

@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.util import dt as dt_util, slugify
 
@@ -224,7 +224,9 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if entry.version >= 5:
         return True
 
-    _LOGGER.debug("Migrating config entry %s from version %s", entry.entry_id, entry.version)
+    _LOGGER.debug(
+        "Migrating config entry %s from version %s", entry.entry_id, entry.version
+    )
 
     new_data = dict(entry.data)
     new_options = dict(entry.options)
@@ -300,7 +302,9 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 continue
 
             try:
-                ent_reg.async_update_entity(ent.entity_id, new_entity_id=desired_entity_id)
+                ent_reg.async_update_entity(
+                    ent.entity_id, new_entity_id=desired_entity_id
+                )
             except Exception as err:
                 _LOGGER.debug(
                     "Failed renaming %s -> %s: %s",
@@ -321,7 +325,11 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             FILTER_MODE_COUNTY,
         )
 
-        mode = str(new_options.get(CONF_FILTER_MODE, new_data.get(CONF_FILTER_MODE, DEFAULT_FILTER_MODE)))
+        mode = str(
+            new_options.get(
+                CONF_FILTER_MODE, new_data.get(CONF_FILTER_MODE, DEFAULT_FILTER_MODE)
+            )
+        )
         if mode == "sweden":
             # Previously experimental: Sweden-wide mode; map to county mode with 'all'
             new_data[CONF_FILTER_MODE] = FILTER_MODE_COUNTY
@@ -337,8 +345,8 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if not isinstance(counties, list) or not counties:
                 new_data[CONF_COUNTIES] = [COUNTY_ALL]
 
-    hass.config_entries.async_update_entry(entry, data=new_data, options=new_options, version=5)
+    hass.config_entries.async_update_entry(
+        entry, data=new_data, options=new_options, version=5
+    )
     _LOGGER.debug("Migration to version 5 successful for %s", entry.entry_id)
     return True
-
-

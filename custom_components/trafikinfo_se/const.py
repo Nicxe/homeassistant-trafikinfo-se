@@ -27,8 +27,8 @@ CONF_SORT_LOCATION = "sort_location"
 CONF_FILTER_ROADS = "filter_roads"
 
 SORT_MODE_RELEVANCE = "relevance"  # important -> nearest -> newest
-SORT_MODE_NEAREST = "nearest"      # nearest -> newest
-SORT_MODE_NEWEST = "newest"        # newest only
+SORT_MODE_NEAREST = "nearest"  # nearest -> newest
+SORT_MODE_NEWEST = "newest"  # newest only
 
 DEFAULT_SORT_MODE = SORT_MODE_RELEVANCE
 
@@ -120,5 +120,3 @@ COUNTIES: dict[str, str] = {
     "24": "Västerbottens län",
     "25": "Norrbottens län",
 }
-
-

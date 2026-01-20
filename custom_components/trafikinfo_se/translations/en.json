@@ -133,7 +133,28 @@
     "error": {
       "missing_counties": "Select at least one county (or 'Sweden')."
     }
+  },
+  "entity": {
+    "sensor": {
+      "viktig_trafikinformation": {
+        "name": "Important traffic information"
+      },
+      "hinder": {
+        "name": "Obstacle"
+      },
+      "olycka": {
+        "name": "Accident"
+      },
+      "restriktion": {
+        "name": "Restriction"
+      },
+      "trafikmeddelande": {
+        "name": "Traffic message"
+      },
+      "vagarbete": {
+        "name": "Roadworks"
+      }
+    }
   }
 }
-
 

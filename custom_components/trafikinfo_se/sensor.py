@@ -8,7 +8,11 @@ import logging
 from typing import Any
 from urllib.parse import quote
 
-from homeassistant.components.sensor import SensorEntity, SensorEntityDescription, SensorStateClass
+from homeassistant.components.sensor import (
+    SensorEntity,
+    SensorEntityDescription,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -202,6 +206,7 @@ def _category_picture_url(
     remote = coordinator.get_remote_icon_url(icon_id)
     return remote if isinstance(remote, str) and remote else None
 
+
 def _category_for_event(event: Any) -> str | None:
     """Resolve one of MESSAGE_TYPES for a TrafikinfoEvent-like object."""
     # Prefer Swedish category text when it matches our known stable categories.
@@ -231,7 +236,9 @@ async def async_setup_entry(
 ) -> None:
     """Set up sensor(s) from a config entry."""
     coordinator: TrafikinfoCoordinator = entry.runtime_data.coordinator
-    enabled = entry.options.get(CONF_MESSAGE_TYPES, entry.data.get(CONF_MESSAGE_TYPES, DEFAULT_MESSAGE_TYPES))
+    enabled = entry.options.get(
+        CONF_MESSAGE_TYPES, entry.data.get(CONF_MESSAGE_TYPES, DEFAULT_MESSAGE_TYPES)
+    )
     if not isinstance(enabled, list) or not enabled:
         enabled = list(DEFAULT_MESSAGE_TYPES)
     enabled_set = set(enabled)
@@ -240,15 +247,19 @@ async def async_setup_entry(
     for msg_type in DEFAULT_MESSAGE_TYPES:
         if msg_type in enabled_set and msg_type in SENSOR_DESCRIPTIONS:
             description = SENSOR_DESCRIPTIONS[msg_type]
-            entities.append(TrafikinfoMessageTypeSensor(entry, coordinator, description))
+            entities.append(
+                TrafikinfoMessageTypeSensor(entry, coordinator, description)
+            )
     async_add_entities(entities)
 
 
-class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], SensorEntity):
+class TrafikinfoMessageTypeSensor(
+    CoordinatorEntity[TrafikinfoCoordinator], SensorEntity
+):
     """Sensor showing number of active traffic events for a specific MessageType."""
 
     entity_description: TrafikinfoSensorEntityDescription
-    _attr_has_entity_name = True
+    _attr_has_entity_name = False
     _EVENT_PUBLISH_TYPES = {"Hinder", "Olycka"}
 
     def __init__(
@@ -261,9 +272,12 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
         self.entity_description = entity_description
         self._entry = entry
         self._message_type = entity_description.message_type
+        self._attr_name = self._message_type
 
         # Unique ID preserved for backward compatibility
-        self._attr_unique_id = f"{entry.entry_id}_message_type_{slugify(self._message_type)}"
+        self._attr_unique_id = (
+            f"{entry.entry_id}_message_type_{slugify(self._message_type)}"
+        )
         self._attr_icon = entity_description.icon_mdi
 
         self._incident_bus_name: str | None = None
@@ -356,14 +370,27 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
         """Signature that changes when an incident changes."""
         # Prefer timestamps that usually change on updates.
         parts: list[str] = []
-        for attr in ("modified_time", "version_time", "publication_time", "end_time", "start_time"):
+        for attr in (
+            "modified_time",
+            "version_time",
+            "publication_time",
+            "end_time",
+            "start_time",
+        ):
             v = getattr(event, attr, None)
             try:
                 parts.append(v.isoformat() if hasattr(v, "isoformat") else str(v))
             except Exception:
                 parts.append(str(v))
         # Include key text to catch changes even if timestamps are missing.
-        for attr in ("severity_code", "severity_text", "message_type", "message_type_value", "header", "message"):
+        for attr in (
+            "severity_code",
+            "severity_text",
+            "message_type",
+            "message_type_value",
+            "header",
+            "message",
+        ):
             v = getattr(event, attr, None)
             parts.append(str(v) if v is not None else "")
         return "|".join(parts)
@@ -473,7 +500,9 @@ class TrafikinfoMessageTypeSensor(CoordinatorEntity[TrafikinfoCoordinator], Sens
                 if local_icon:
                     d["icon_url"] = local_icon
                 elif icon_id:
-                    d["icon_url"] = f"{TRAFIKVERKET_ICONS_BASE_URL}/{quote(icon_id, safe='')}?type=png32x32"
+                    d["icon_url"] = (
+                        f"{TRAFIKVERKET_ICONS_BASE_URL}/{quote(icon_id, safe='')}?type=png32x32"
+                    )
                 elif picture_url:
                     d["icon_url"] = picture_url
                 dist = self.coordinator.event_distance_km(e)

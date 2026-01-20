@@ -78,6 +78,7 @@ class TrafikinfoAPIError(TrafikinfoError):
 class TrafikinfoParseError(TrafikinfoError):
     """Exception for XML parsing errors."""
 
+
 def _file_nonempty(path: Path) -> bool:
     try:
         return path.exists() and path.stat().st_size > 0
@@ -93,7 +94,9 @@ def _try_unlink(path: Path) -> None:
 
 
 def _looks_like_png(data: bytes) -> bool:
-    return isinstance(data, (bytes, bytearray)) and data.startswith(b"\x89PNG\r\n\x1a\n")
+    return isinstance(data, (bytes, bytearray)) and data.startswith(
+        b"\x89PNG\r\n\x1a\n"
+    )
 
 
 def _looks_like_svg(data: bytes) -> bool:
@@ -281,7 +284,9 @@ def _parse_response(xml_text: str) -> TrafikinfoData:
     err_msg = root.findtext(".//{*}ERROR/{*}MESSAGE")
     if err_msg:
         if "authentication" in err_msg.lower() or "invalid key" in err_msg.lower():
-            raise TrafikinfoAuthenticationError(f"Authentication failed: {err_msg.strip()}")
+            raise TrafikinfoAuthenticationError(
+                f"Authentication failed: {err_msg.strip()}"
+            )
         raise TrafikinfoAPIError(f"Trafikverket API error: {err_msg.strip()}")
 
     last_modified_raw = root.find(".//{*}INFO/{*}LASTMODIFIED")
@@ -346,7 +351,9 @@ def _parse_response(xml_text: str) -> TrafikinfoData:
                     road_name=_strip(_findtext(dev, "./RoadName")),
                     county_no=county_no,
                     affected_direction=_strip(_findtext(dev, "./AffectedDirection")),
-                    affected_direction_value=_strip(_findtext(dev, "./AffectedDirectionValue")),
+                    affected_direction_value=_strip(
+                        _findtext(dev, "./AffectedDirectionValue")
+                    ),
                     start_time=start_time,
                     end_time=end_time,
                     valid_until_further_notice=_as_bool(
@@ -354,7 +361,9 @@ def _parse_response(xml_text: str) -> TrafikinfoData:
                     ),
                     suspended=suspended,
                     location_descriptor=_strip(_findtext(dev, "./LocationDescriptor")),
-                    positional_description=_strip(_findtext(dev, "./PositionalDescription")),
+                    positional_description=_strip(
+                        _findtext(dev, "./PositionalDescription")
+                    ),
                     traffic_restriction_type=_strip(
                         _findtext(dev, "./TrafficRestrictionType")
                     ),
@@ -405,10 +414,14 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
         self._entry = entry
         self._api_key = str(entry.data.get(CONF_API_KEY, "")).strip()
         self._max_items = int(
-            entry.options.get(CONF_MAX_ITEMS, entry.data.get(CONF_MAX_ITEMS, DEFAULT_MAX_ITEMS))
+            entry.options.get(
+                CONF_MAX_ITEMS, entry.data.get(CONF_MAX_ITEMS, DEFAULT_MAX_ITEMS)
+            )
         )
         self._filter_roads: list[str] = []
-        raw_roads = entry.options.get(CONF_FILTER_ROADS, entry.data.get(CONF_FILTER_ROADS, []))
+        raw_roads = entry.options.get(
+            CONF_FILTER_ROADS, entry.data.get(CONF_FILTER_ROADS, [])
+        )
         if isinstance(raw_roads, str):
             parts: list[str] = []
             for chunk in raw_roads.split(";"):
@@ -417,28 +430,42 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
         if isinstance(raw_roads, list):
             self._filter_roads = [str(x).strip() for x in raw_roads if str(x).strip()]
         self._sort_mode = str(
-            entry.options.get(CONF_SORT_MODE, entry.data.get(CONF_SORT_MODE, DEFAULT_SORT_MODE))
+            entry.options.get(
+                CONF_SORT_MODE, entry.data.get(CONF_SORT_MODE, DEFAULT_SORT_MODE)
+            )
         )
-        if self._sort_mode not in (SORT_MODE_RELEVANCE, SORT_MODE_NEAREST, SORT_MODE_NEWEST):
+        if self._sort_mode not in (
+            SORT_MODE_RELEVANCE,
+            SORT_MODE_NEAREST,
+            SORT_MODE_NEWEST,
+        ):
             self._sort_mode = DEFAULT_SORT_MODE
         self._filter_mode = str(
-            entry.options.get(CONF_FILTER_MODE, entry.data.get(CONF_FILTER_MODE, DEFAULT_FILTER_MODE))
+            entry.options.get(
+                CONF_FILTER_MODE, entry.data.get(CONF_FILTER_MODE, DEFAULT_FILTER_MODE)
+            )
         )
         if self._filter_mode not in (FILTER_MODE_COORDINATE, FILTER_MODE_COUNTY):
             # Backward compatibility for earlier values (e.g. "sweden") or unknown values.
             self._filter_mode = FILTER_MODE_COUNTY
         self._counties: set[str] = set()
-        raw_counties = entry.options.get(CONF_COUNTIES, entry.data.get(CONF_COUNTIES, []))
+        raw_counties = entry.options.get(
+            CONF_COUNTIES, entry.data.get(CONF_COUNTIES, [])
+        )
         if isinstance(raw_counties, list):
             self._counties = {str(x) for x in raw_counties if str(x).strip()}
         # If mode is county but counties is empty, default to Sweden-wide.
         if self._filter_mode == FILTER_MODE_COUNTY and not self._counties:
             self._counties = {COUNTY_ALL}
         self._latitude = float(
-            entry.options.get(CONF_LATITUDE, entry.data.get(CONF_LATITUDE, hass.config.latitude))
+            entry.options.get(
+                CONF_LATITUDE, entry.data.get(CONF_LATITUDE, hass.config.latitude)
+            )
         )
         self._longitude = float(
-            entry.options.get(CONF_LONGITUDE, entry.data.get(CONF_LONGITUDE, hass.config.longitude))
+            entry.options.get(
+                CONF_LONGITUDE, entry.data.get(CONF_LONGITUDE, hass.config.longitude)
+            )
         )
         # Sorting reference point:
         # - Coordinate mode: uses the configured center (lat/lon)
@@ -449,23 +476,33 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
             self._sort_latitude = float(self._latitude)
             self._sort_longitude = float(self._longitude)
         else:
-            sort_loc = entry.options.get(CONF_SORT_LOCATION, entry.data.get(CONF_SORT_LOCATION))
+            sort_loc = entry.options.get(
+                CONF_SORT_LOCATION, entry.data.get(CONF_SORT_LOCATION)
+            )
             if isinstance(sort_loc, dict):
                 try:
-                    self._sort_latitude = float(sort_loc.get("latitude", hass.config.latitude))
-                    self._sort_longitude = float(sort_loc.get("longitude", hass.config.longitude))
+                    self._sort_latitude = float(
+                        sort_loc.get("latitude", hass.config.latitude)
+                    )
+                    self._sort_longitude = float(
+                        sort_loc.get("longitude", hass.config.longitude)
+                    )
                 except (TypeError, ValueError):
                     self._sort_latitude = float(hass.config.latitude)
                     self._sort_longitude = float(hass.config.longitude)
         self._radius_km = float(
-            entry.options.get(CONF_RADIUS_KM, entry.data.get(CONF_RADIUS_KM, DEFAULT_RADIUS_KM))
+            entry.options.get(
+                CONF_RADIUS_KM, entry.data.get(CONF_RADIUS_KM, DEFAULT_RADIUS_KM)
+            )
         )
         self._icon_local_urls: dict[str, str] = {}
 
         scan_minutes = int(
             entry.options.get(
                 CONF_SCAN_INTERVAL,
-                entry.data.get(CONF_SCAN_INTERVAL, int(DEFAULT_SCAN_INTERVAL.total_seconds() / 60)),
+                entry.data.get(
+                    CONF_SCAN_INTERVAL, int(DEFAULT_SCAN_INTERVAL.total_seconds() / 60)
+                ),
             )
         )
         update_interval = timedelta(minutes=max(1, scan_minutes))
@@ -524,7 +561,9 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
 
     def apply_options(self) -> None:
         """Apply updated options from the config entry."""
-        raw_roads = self._entry.options.get(CONF_FILTER_ROADS, self._entry.data.get(CONF_FILTER_ROADS, []))
+        raw_roads = self._entry.options.get(
+            CONF_FILTER_ROADS, self._entry.data.get(CONF_FILTER_ROADS, [])
+        )
         if isinstance(raw_roads, str):
             parts: list[str] = []
             for chunk in raw_roads.split(";"):
@@ -535,9 +574,15 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
         else:
             self._filter_roads = []
         self._sort_mode = str(
-            self._entry.options.get(CONF_SORT_MODE, self._entry.data.get(CONF_SORT_MODE, DEFAULT_SORT_MODE))
+            self._entry.options.get(
+                CONF_SORT_MODE, self._entry.data.get(CONF_SORT_MODE, DEFAULT_SORT_MODE)
+            )
         )
-        if self._sort_mode not in (SORT_MODE_RELEVANCE, SORT_MODE_NEAREST, SORT_MODE_NEWEST):
+        if self._sort_mode not in (
+            SORT_MODE_RELEVANCE,
+            SORT_MODE_NEAREST,
+            SORT_MODE_NEWEST,
+        ):
             self._sort_mode = DEFAULT_SORT_MODE
         self._filter_mode = str(
             self._entry.options.get(
@@ -548,7 +593,9 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
         if self._filter_mode not in (FILTER_MODE_COORDINATE, FILTER_MODE_COUNTY):
             self._filter_mode = FILTER_MODE_COUNTY
         self._counties = set()
-        raw_counties = self._entry.options.get(CONF_COUNTIES, self._entry.data.get(CONF_COUNTIES, []))
+        raw_counties = self._entry.options.get(
+            CONF_COUNTIES, self._entry.data.get(CONF_COUNTIES, [])
+        )
         if isinstance(raw_counties, list):
             self._counties = {str(x) for x in raw_counties if str(x).strip()}
         if self._filter_mode == FILTER_MODE_COUNTY and not self._counties:
@@ -570,7 +617,8 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
         )
         self._latitude = float(
             self._entry.options.get(
-                CONF_LATITUDE, self._entry.data.get(CONF_LATITUDE, self.hass.config.latitude)
+                CONF_LATITUDE,
+                self._entry.data.get(CONF_LATITUDE, self.hass.config.latitude),
             )
         )
         self._longitude = float(
@@ -589,11 +637,17 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
             self._sort_latitude = float(self._latitude)
             self._sort_longitude = float(self._longitude)
         else:
-            sort_loc = self._entry.options.get(CONF_SORT_LOCATION, self._entry.data.get(CONF_SORT_LOCATION))
+            sort_loc = self._entry.options.get(
+                CONF_SORT_LOCATION, self._entry.data.get(CONF_SORT_LOCATION)
+            )
             if isinstance(sort_loc, dict):
                 try:
-                    self._sort_latitude = float(sort_loc.get("latitude", self.hass.config.latitude))
-                    self._sort_longitude = float(sort_loc.get("longitude", self.hass.config.longitude))
+                    self._sort_latitude = float(
+                        sort_loc.get("latitude", self.hass.config.latitude)
+                    )
+                    self._sort_longitude = float(
+                        sort_loc.get("longitude", self.hass.config.longitude)
+                    )
                 except (TypeError, ValueError):
                     self._sort_latitude = float(self.hass.config.latitude)
                     self._sort_longitude = float(self.hass.config.longitude)
@@ -632,7 +686,9 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
                 return True
         return False
 
-    def _apply_road_filter(self, events: list[TrafikinfoEvent]) -> list[TrafikinfoEvent]:
+    def _apply_road_filter(
+        self, events: list[TrafikinfoEvent]
+    ) -> list[TrafikinfoEvent]:
         """Apply road filter, but never drop important safety/national messages."""
         if not self._filter_roads:
             return events
@@ -706,7 +762,13 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
             missing = 1 if d is None else 0  # known distances first
             dval = float(d) if d is not None else float("inf")
             # Newest first as tie-breaker
-            return (missing, dval, -_pub_ts(e), e.situation_id or "", e.deviation_id or "")
+            return (
+                missing,
+                dval,
+                -_pub_ts(e),
+                e.situation_id or "",
+                e.deviation_id or "",
+            )
 
         if self._sort_mode == SORT_MODE_NEAREST:
             return sorted(events, key=_k_nearest, reverse=False)
@@ -718,7 +780,14 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
             missing = 1 if d is None else 0
             dval = float(d) if d is not None else float("inf")
             # Newest first within same bucket:
-            return (important, missing, dval, -_pub_ts(e), e.situation_id or "", e.deviation_id or "")
+            return (
+                important,
+                missing,
+                dval,
+                -_pub_ts(e),
+                e.situation_id or "",
+                e.deviation_id or "",
+            )
 
         return sorted(events, key=_k_relevance, reverse=False)
 
@@ -756,7 +825,9 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
 
     def _safe_icon_filename(self, icon_id: str, ext: str) -> str:
         # Keep stable and filesystem-safe, avoid path traversal.
-        safe = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in icon_id)
+        safe = "".join(
+            ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in icon_id
+        )
         if not safe:
             safe = "icon"
         return f"{safe}.{ext}"
@@ -798,7 +869,9 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
         # Prefer v2 icon URL (matches Icon dataset Url field).
         url_v2 = self.get_remote_icon_url(icon_id)
         # Fallback to v1 typed URL.
-        url_v1 = f"{TRAFIKVERKET_ICONS_BASE_URL}/{quote(icon_id, safe='')}?type=png32x32"
+        url_v1 = (
+            f"{TRAFIKVERKET_ICONS_BASE_URL}/{quote(icon_id, safe='')}?type=png32x32"
+        )
 
         for url in (url_v2, url_v1):
             if not url:
@@ -820,12 +893,16 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
                             if not _looks_like_svg(content):
                                 continue
                             await self._async_write_file(svg_path, content)
-                            self._icon_local_urls[icon_id] = f"/local/{ICON_CACHE_DIR}/{svg_name}"
+                            self._icon_local_urls[icon_id] = (
+                                f"/local/{ICON_CACHE_DIR}/{svg_name}"
+                            )
                         elif ("png" in ctype) or _looks_like_png(content):
                             if not _looks_like_png(content):
                                 continue
                             await self._async_write_file(png_path, content)
-                            self._icon_local_urls[icon_id] = f"/local/{ICON_CACHE_DIR}/{png_name}"
+                            self._icon_local_urls[icon_id] = (
+                                f"/local/{ICON_CACHE_DIR}/{png_name}"
+                            )
                         else:
                             continue
                         return
@@ -898,13 +975,18 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
             i += step
         return pts
 
-    def _haversine_km(self, lon1: float, lat1: float, lon2: float, lat2: float) -> float:
+    def _haversine_km(
+        self, lon1: float, lat1: float, lon2: float, lat2: float
+    ) -> float:
         r = 6371.0
         p1 = math.radians(lat1)
         p2 = math.radians(lat2)
         dlat = math.radians(lat2 - lat1)
         dlon = math.radians(lon2 - lon1)
-        a = math.sin(dlat / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlon / 2) ** 2
+        a = (
+            math.sin(dlat / 2) ** 2
+            + math.cos(p1) * math.cos(p2) * math.sin(dlon / 2) ** 2
+        )
         return 2 * r * math.asin(math.sqrt(a))
 
     def _in_radius(self, event: TrafikinfoEvent) -> bool:
@@ -954,11 +1036,15 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
         except TrafikinfoError as err:
             raise UpdateFailed(str(err)) from err
         except asyncio.TimeoutError:
-            raise UpdateFailed("Request timeout - Trafikverket API not responding") from None
+            raise UpdateFailed(
+                "Request timeout - Trafikverket API not responding"
+            ) from None
         except aiohttp.ClientError as err:
             raise UpdateFailed(f"Connection error: {err}") from err
         except Exception as err:
-            raise UpdateFailed(f"Unexpected error fetching Trafikverket data: {err}") from err
+            raise UpdateFailed(
+                f"Unexpected error fetching Trafikverket data: {err}"
+            ) from err
 
         try:
             data = _parse_response(text)
@@ -988,5 +1074,3 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
             last_change_id=data.last_change_id,
             sse_url=data.sse_url,
         )
-
-
