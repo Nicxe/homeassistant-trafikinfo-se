@@ -11,7 +11,6 @@ if TYPE_CHECKING:
 DOMAIN = "trafikinfo_se"
 
 CONF_API_KEY = "api_key"
-CONF_SCAN_INTERVAL = "scan_interval"
 CONF_MAX_ITEMS = "max_items"
 CONF_MESSAGE_TYPES = "message_types"
 CONF_LOCATION = "location"
@@ -41,7 +40,7 @@ FILTER_MODE_COORDINATE = "coordinate"
 FILTER_MODE_COUNTY = "county"
 FILTER_MODE_SWEDEN = "sweden"
 
-DEFAULT_SCAN_INTERVAL = timedelta(minutes=10)
+DEFAULT_SCAN_INTERVAL = timedelta(minutes=5)
 DEFAULT_MAX_ITEMS = 25
 DEFAULT_RADIUS_KM = 25.0
 DEFAULT_FILTER_MODE = FILTER_MODE_COORDINATE

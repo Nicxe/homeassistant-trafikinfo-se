@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 import logging
 import math
 from pathlib import Path
@@ -31,7 +31,6 @@ from .const import (
     CONF_LONGITUDE,
     CONF_MAX_ITEMS,
     CONF_RADIUS_KM,
-    CONF_SCAN_INTERVAL,
     CONF_SORT_LOCATION,
     CONF_SORT_MODE,
     COUNTY_ALL,
@@ -497,21 +496,11 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
         )
         self._icon_local_urls: dict[str, str] = {}
 
-        scan_minutes = int(
-            entry.options.get(
-                CONF_SCAN_INTERVAL,
-                entry.data.get(
-                    CONF_SCAN_INTERVAL, int(DEFAULT_SCAN_INTERVAL.total_seconds() / 60)
-                ),
-            )
-        )
-        update_interval = timedelta(minutes=max(1, scan_minutes))
-
         super().__init__(
             hass,
             logger=_LOGGER,
             name=DOMAIN,
-            update_interval=update_interval,
+            update_interval=DEFAULT_SCAN_INTERVAL,
         )
 
     @property
@@ -601,15 +590,7 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
         if self._filter_mode == FILTER_MODE_COUNTY and not self._counties:
             self._counties = {COUNTY_ALL}
 
-        scan_minutes = int(
-            self._entry.options.get(
-                CONF_SCAN_INTERVAL,
-                self._entry.data.get(
-                    CONF_SCAN_INTERVAL, int(DEFAULT_SCAN_INTERVAL.total_seconds() / 60)
-                ),
-            )
-        )
-        self.update_interval = timedelta(minutes=max(1, scan_minutes))
+        self.update_interval = DEFAULT_SCAN_INTERVAL
         self._max_items = int(
             self._entry.options.get(
                 CONF_MAX_ITEMS, self._entry.data.get(CONF_MAX_ITEMS, DEFAULT_MAX_ITEMS)

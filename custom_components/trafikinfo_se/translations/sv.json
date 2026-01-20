@@ -23,7 +23,6 @@
           "radius_km": "Radie (km)",
           "filter_roads": "Vägfilter (vägnummer/namn)",
           "name": "Namn",
-          "scan_interval": "Uppdateringsintervall (minuter)",
           "max_items": "Max antal händelser i attribut",
           "sort_mode": "Urval / sortering",
           "message_types": "Meddelandetyper (kategorier)"
@@ -37,7 +36,6 @@
           "sort_location": "Referensposition (för urval/sortering)",
           "filter_roads": "Vägfilter (vägnummer/namn)",
           "name": "Namn",
-          "scan_interval": "Uppdateringsintervall (minuter)",
           "max_items": "Max antal händelser i attribut",
           "sort_mode": "Urval / sortering",
           "message_types": "Meddelandetyper (kategorier)"
@@ -58,7 +56,6 @@
           "radius_km": "Radie (km)",
           "filter_roads": "Vägfilter (vägnummer/namn)",
           "name": "Namn",
-          "scan_interval": "Uppdateringsintervall (minuter)",
           "max_items": "Max antal händelser i attribut",
           "sort_mode": "Urval / sortering",
           "message_types": "Meddelandetyper (kategorier)"
@@ -72,7 +69,6 @@
           "sort_location": "Referensposition (för urval/sortering)",
           "filter_roads": "Vägfilter (vägnummer/namn)",
           "name": "Namn",
-          "scan_interval": "Uppdateringsintervall (minuter)",
           "max_items": "Max antal händelser i attribut",
           "sort_mode": "Urval / sortering",
           "message_types": "Meddelandetyper (kategorier)"
@@ -103,7 +99,6 @@
           "radius_km": "Radie (km)",
           "filter_roads": "Vägfilter (vägnummer/namn)",
           "name": "Namn",
-          "scan_interval": "Uppdateringsintervall (minuter)",
           "max_items": "Max antal händelser i attribut",
           "sort_mode": "Urval / sortering",
           "message_types": "Meddelandetyper (kategorier)"
@@ -117,7 +112,6 @@
           "sort_location": "Referensposition (för urval/sortering)",
           "filter_roads": "Vägfilter (vägnummer/namn)",
           "name": "Namn",
-          "scan_interval": "Uppdateringsintervall (minuter)",
           "max_items": "Max antal händelser i attribut",
           "sort_mode": "Urval / sortering",
           "message_types": "Meddelandetyper (kategorier)"
@@ -151,4 +145,3 @@
     }
   }
 }
-

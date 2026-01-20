@@ -221,7 +221,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: TrafikinfoConfigEntry) 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Migrate old config entries."""
-    if entry.version >= 5:
+    if entry.version >= 6:
         return True
 
     _LOGGER.debug(
@@ -345,8 +345,13 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if not isinstance(counties, list) or not counties:
                 new_data[CONF_COUNTIES] = [COUNTY_ALL]
 
+    if entry.version < 6:
+        # v6: Remove legacy scan interval; polling is now fixed by the integration.
+        new_data.pop("scan_interval", None)
+        new_options.pop("scan_interval", None)
+
     hass.config_entries.async_update_entry(
-        entry, data=new_data, options=new_options, version=5
+        entry, data=new_data, options=new_options, version=6
     )
-    _LOGGER.debug("Migration to version 5 successful for %s", entry.entry_id)
+    _LOGGER.debug("Migration to version 6 successful for %s", entry.entry_id)
     return True
