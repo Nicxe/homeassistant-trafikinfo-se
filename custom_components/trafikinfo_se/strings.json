@@ -23,7 +23,6 @@
           "radius_km": "Radius (km)",
           "filter_roads": "Road filter (road numbers/names)",
           "name": "Name",
-          "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",
           "sort_mode": "Selection / sorting",
           "message_types": "Message types (categories)"
@@ -37,7 +36,6 @@
           "sort_location": "Reference position (for selection/sorting)",
           "filter_roads": "Road filter (road numbers/names)",
           "name": "Name",
-          "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",
           "sort_mode": "Selection / sorting",
           "message_types": "Message types (categories)"
@@ -58,7 +56,6 @@
           "radius_km": "Radius (km)",
           "filter_roads": "Road filter (road numbers/names)",
           "name": "Name",
-          "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",
           "sort_mode": "Selection / sorting",
           "message_types": "Message types (categories)"
@@ -72,7 +69,6 @@
           "sort_location": "Reference position (for selection/sorting)",
           "filter_roads": "Road filter (road numbers/names)",
           "name": "Name",
-          "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",
           "sort_mode": "Selection / sorting",
           "message_types": "Message types (categories)"
@@ -103,7 +99,6 @@
           "radius_km": "Radius (km)",
           "filter_roads": "Road filter (road numbers/names)",
           "name": "Name",
-          "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",
           "sort_mode": "Selection / sorting",
           "message_types": "Message types (categories)"
@@ -117,7 +112,6 @@
           "sort_location": "Reference position (for selection/sorting)",
           "filter_roads": "Road filter (road numbers/names)",
           "name": "Name",
-          "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",
           "sort_mode": "Selection / sorting",
           "message_types": "Message types (categories)"
@@ -151,5 +145,4 @@
     }
   }
 }
-
 

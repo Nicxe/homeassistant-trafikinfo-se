@@ -11,7 +11,6 @@ if TYPE_CHECKING:
 DOMAIN = "trafikinfo_se"
 
 CONF_API_KEY = "api_key"
-CONF_SCAN_INTERVAL = "scan_interval"
 CONF_MAX_ITEMS = "max_items"
 CONF_MESSAGE_TYPES = "message_types"
 CONF_LOCATION = "location"
@@ -27,8 +26,8 @@ CONF_SORT_LOCATION = "sort_location"
 CONF_FILTER_ROADS = "filter_roads"
 
 SORT_MODE_RELEVANCE = "relevance"  # important -> nearest -> newest
-SORT_MODE_NEAREST = "nearest"      # nearest -> newest
-SORT_MODE_NEWEST = "newest"        # newest only
+SORT_MODE_NEAREST = "nearest"  # nearest -> newest
+SORT_MODE_NEWEST = "newest"  # newest only
 
 DEFAULT_SORT_MODE = SORT_MODE_RELEVANCE
 
@@ -41,7 +40,7 @@ FILTER_MODE_COORDINATE = "coordinate"
 FILTER_MODE_COUNTY = "county"
 FILTER_MODE_SWEDEN = "sweden"
 
-DEFAULT_SCAN_INTERVAL = timedelta(minutes=10)
+DEFAULT_SCAN_INTERVAL = timedelta(minutes=5)
 DEFAULT_MAX_ITEMS = 25
 DEFAULT_RADIUS_KM = 25.0
 DEFAULT_FILTER_MODE = FILTER_MODE_COORDINATE
@@ -120,5 +119,3 @@ COUNTIES: dict[str, str] = {
     "24": "Västerbottens län",
     "25": "Norrbottens län",
 }
-
-

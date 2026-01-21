@@ -24,7 +24,6 @@
           "filter_roads": "Road filter (road numbers/names)",
           "filter_roads": "Road filter (road numbers/names)",
           "name": "Name",
-          "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",
           "sort_mode": "Selection / sorting",
           "message_types": "Message types (categories)"
@@ -39,7 +38,6 @@
           "filter_roads": "Road filter (road numbers/names)",
           "filter_roads": "Road filter (road numbers/names)",
           "name": "Name",
-          "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",
           "sort_mode": "Selection / sorting",
           "message_types": "Message types (categories)"
@@ -61,7 +59,6 @@
           "filter_roads": "Road filter (road numbers/names)",
           "filter_roads": "Road filter (road numbers/names)",
           "name": "Name",
-          "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",
           "sort_mode": "Selection / sorting",
           "message_types": "Message types (categories)"
@@ -76,7 +73,6 @@
           "filter_roads": "Road filter (road numbers/names)",
           "filter_roads": "Road filter (road numbers/names)",
           "name": "Name",
-          "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",
           "sort_mode": "Selection / sorting",
           "message_types": "Message types (categories)"
@@ -108,7 +104,6 @@
           "filter_roads": "Road filter (road numbers/names)",
           "filter_roads": "Road filter (road numbers/names)",
           "name": "Name",
-          "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",
           "sort_mode": "Selection / sorting",
           "message_types": "Message types (categories)"
@@ -123,7 +118,6 @@
           "filter_roads": "Road filter (road numbers/names)",
           "filter_roads": "Road filter (road numbers/names)",
           "name": "Name",
-          "scan_interval": "Update interval (minutes)",
           "max_items": "Max items in attributes",
           "sort_mode": "Selection / sorting",
           "message_types": "Message types (categories)"
@@ -133,7 +127,27 @@
     "error": {
       "missing_counties": "Select at least one county (or 'Sweden')."
     }
+  },
+  "entity": {
+    "sensor": {
+      "viktig_trafikinformation": {
+        "name": "Important traffic information"
+      },
+      "hinder": {
+        "name": "Obstacle"
+      },
+      "olycka": {
+        "name": "Accident"
+      },
+      "restriktion": {
+        "name": "Restriction"
+      },
+      "trafikmeddelande": {
+        "name": "Traffic message"
+      },
+      "vagarbete": {
+        "name": "Roadworks"
+      }
+    }
   }
 }
-
-
