@@ -260,6 +260,7 @@ class TrafikinfoMessageTypeSensor(
 
     entity_description: TrafikinfoSensorEntityDescription
     _attr_has_entity_name = False
+    _unrecorded_attributes = frozenset({"events"})
     _EVENT_PUBLISH_TYPES = {"Hinder", "Olycka"}
 
     def __init__(
