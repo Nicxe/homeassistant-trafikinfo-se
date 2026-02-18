@@ -22,11 +22,14 @@
           "location": "Center position",
           "radius_km": "Radius (km)",
           "filter_roads": "Road filter (road numbers/names)",
-          "filter_roads": "Road filter (road numbers/names)",
           "name": "Name",
           "max_items": "Max items in attributes",
           "sort_mode": "Selection / sorting",
-          "message_types": "Message types (categories)"
+          "message_types": "Message types (categories)",
+          "road_filter_safety_bypass": "Bypass road filter for safety-related messages"
+        },
+        "data_description": {
+          "road_filter_safety_bypass": "If enabled, events marked as safety-related by Trafikverket bypass the road filter and are always shown. 'Viktig trafikinformation' always bypasses the road filter regardless of this setting. Disable to apply road filtering strictly to all event types including Trafikmeddelande."
         }
       },
       "configure_counties": {
@@ -36,11 +39,14 @@
           "counties": "Counties",
           "sort_location": "Reference position (for selection/sorting)",
           "filter_roads": "Road filter (road numbers/names)",
-          "filter_roads": "Road filter (road numbers/names)",
           "name": "Name",
           "max_items": "Max items in attributes",
           "sort_mode": "Selection / sorting",
-          "message_types": "Message types (categories)"
+          "message_types": "Message types (categories)",
+          "road_filter_safety_bypass": "Bypass road filter for safety-related messages"
+        },
+        "data_description": {
+          "road_filter_safety_bypass": "If enabled, events marked as safety-related by Trafikverket bypass the road filter and are always shown. 'Viktig trafikinformation' always bypasses the road filter regardless of this setting. Disable to apply road filtering strictly to all event types including Trafikmeddelande."
         }
       },
       "reconfigure_filter_mode": {
@@ -57,11 +63,14 @@
           "location": "Center position",
           "radius_km": "Radius (km)",
           "filter_roads": "Road filter (road numbers/names)",
-          "filter_roads": "Road filter (road numbers/names)",
           "name": "Name",
           "max_items": "Max items in attributes",
           "sort_mode": "Selection / sorting",
-          "message_types": "Message types (categories)"
+          "message_types": "Message types (categories)",
+          "road_filter_safety_bypass": "Bypass road filter for safety-related messages"
+        },
+        "data_description": {
+          "road_filter_safety_bypass": "If enabled, events marked as safety-related by Trafikverket bypass the road filter and are always shown. 'Viktig trafikinformation' always bypasses the road filter regardless of this setting. Disable to apply road filtering strictly to all event types including Trafikmeddelande."
         }
       },
       "reconfigure_counties": {
@@ -71,11 +80,14 @@
           "counties": "Counties",
           "sort_location": "Reference position (for selection/sorting)",
           "filter_roads": "Road filter (road numbers/names)",
-          "filter_roads": "Road filter (road numbers/names)",
           "name": "Name",
           "max_items": "Max items in attributes",
           "sort_mode": "Selection / sorting",
-          "message_types": "Message types (categories)"
+          "message_types": "Message types (categories)",
+          "road_filter_safety_bypass": "Bypass road filter for safety-related messages"
+        },
+        "data_description": {
+          "road_filter_safety_bypass": "If enabled, events marked as safety-related by Trafikverket bypass the road filter and are always shown. 'Viktig trafikinformation' always bypasses the road filter regardless of this setting. Disable to apply road filtering strictly to all event types including Trafikmeddelande."
         }
       }
     },
@@ -102,11 +114,14 @@
           "location": "Center position",
           "radius_km": "Radius (km)",
           "filter_roads": "Road filter (road numbers/names)",
-          "filter_roads": "Road filter (road numbers/names)",
           "name": "Name",
           "max_items": "Max items in attributes",
           "sort_mode": "Selection / sorting",
-          "message_types": "Message types (categories)"
+          "message_types": "Message types (categories)",
+          "road_filter_safety_bypass": "Bypass road filter for safety-related messages"
+        },
+        "data_description": {
+          "road_filter_safety_bypass": "If enabled, events marked as safety-related by Trafikverket bypass the road filter and are always shown. 'Viktig trafikinformation' always bypasses the road filter regardless of this setting. Disable to apply road filtering strictly to all event types including Trafikmeddelande."
         }
       },
       "counties": {
@@ -116,11 +131,14 @@
           "counties": "Counties",
           "sort_location": "Reference position (for selection/sorting)",
           "filter_roads": "Road filter (road numbers/names)",
-          "filter_roads": "Road filter (road numbers/names)",
           "name": "Name",
           "max_items": "Max items in attributes",
           "sort_mode": "Selection / sorting",
-          "message_types": "Message types (categories)"
+          "message_types": "Message types (categories)",
+          "road_filter_safety_bypass": "Bypass road filter for safety-related messages"
+        },
+        "data_description": {
+          "road_filter_safety_bypass": "If enabled, events marked as safety-related by Trafikverket bypass the road filter and are always shown. 'Viktig trafikinformation' always bypasses the road filter regardless of this setting. Disable to apply road filtering strictly to all event types including Trafikmeddelande."
         }
       }
     },
