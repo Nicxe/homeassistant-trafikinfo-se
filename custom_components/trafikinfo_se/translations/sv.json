@@ -25,7 +25,11 @@
           "name": "Namn",
           "max_items": "Max antal händelser i attribut",
           "sort_mode": "Urval / sortering",
-          "message_types": "Meddelandetyper (kategorier)"
+          "message_types": "Meddelandetyper (kategorier)",
+          "road_filter_safety_bypass": "Kringgå vägfilter för säkerhetsrelaterade meddelanden"
+        },
+        "data_description": {
+          "road_filter_safety_bypass": "Om aktiverat visas händelser markerade som säkerhetsrelaterade av Trafikverket oavsett vägfilter. 'Viktig trafikinformation' visas alltid oavsett den här inställningen. Inaktiverat innebär att vägfiltret gäller strikt för alla händelsetyper, inklusive Trafikmeddelande."
         }
       },
       "configure_counties": {
@@ -38,7 +42,11 @@
           "name": "Namn",
           "max_items": "Max antal händelser i attribut",
           "sort_mode": "Urval / sortering",
-          "message_types": "Meddelandetyper (kategorier)"
+          "message_types": "Meddelandetyper (kategorier)",
+          "road_filter_safety_bypass": "Kringgå vägfilter för säkerhetsrelaterade meddelanden"
+        },
+        "data_description": {
+          "road_filter_safety_bypass": "Om aktiverat visas händelser markerade som säkerhetsrelaterade av Trafikverket oavsett vägfilter. 'Viktig trafikinformation' visas alltid oavsett den här inställningen. Inaktiverat innebär att vägfiltret gäller strikt för alla händelsetyper, inklusive Trafikmeddelande."
         }
       },
       "reconfigure_filter_mode": {
@@ -58,7 +66,11 @@
           "name": "Namn",
           "max_items": "Max antal händelser i attribut",
           "sort_mode": "Urval / sortering",
-          "message_types": "Meddelandetyper (kategorier)"
+          "message_types": "Meddelandetyper (kategorier)",
+          "road_filter_safety_bypass": "Kringgå vägfilter för säkerhetsrelaterade meddelanden"
+        },
+        "data_description": {
+          "road_filter_safety_bypass": "Om aktiverat visas händelser markerade som säkerhetsrelaterade av Trafikverket oavsett vägfilter. 'Viktig trafikinformation' visas alltid oavsett den här inställningen. Inaktiverat innebär att vägfiltret gäller strikt för alla händelsetyper, inklusive Trafikmeddelande."
         }
       },
       "reconfigure_counties": {
@@ -71,7 +83,11 @@
           "name": "Namn",
           "max_items": "Max antal händelser i attribut",
           "sort_mode": "Urval / sortering",
-          "message_types": "Meddelandetyper (kategorier)"
+          "message_types": "Meddelandetyper (kategorier)",
+          "road_filter_safety_bypass": "Kringgå vägfilter för säkerhetsrelaterade meddelanden"
+        },
+        "data_description": {
+          "road_filter_safety_bypass": "Om aktiverat visas händelser markerade som säkerhetsrelaterade av Trafikverket oavsett vägfilter. 'Viktig trafikinformation' visas alltid oavsett den här inställningen. Inaktiverat innebär att vägfiltret gäller strikt för alla händelsetyper, inklusive Trafikmeddelande."
         }
       }
     },
@@ -101,7 +117,11 @@
           "name": "Namn",
           "max_items": "Max antal händelser i attribut",
           "sort_mode": "Urval / sortering",
-          "message_types": "Meddelandetyper (kategorier)"
+          "message_types": "Meddelandetyper (kategorier)",
+          "road_filter_safety_bypass": "Kringgå vägfilter för säkerhetsrelaterade meddelanden"
+        },
+        "data_description": {
+          "road_filter_safety_bypass": "Om aktiverat visas händelser markerade som säkerhetsrelaterade av Trafikverket oavsett vägfilter. 'Viktig trafikinformation' visas alltid oavsett den här inställningen. Inaktiverat innebär att vägfiltret gäller strikt för alla händelsetyper, inklusive Trafikmeddelande."
         }
       },
       "counties": {
@@ -114,7 +134,11 @@
           "name": "Namn",
           "max_items": "Max antal händelser i attribut",
           "sort_mode": "Urval / sortering",
-          "message_types": "Meddelandetyper (kategorier)"
+          "message_types": "Meddelandetyper (kategorier)",
+          "road_filter_safety_bypass": "Kringgå vägfilter för säkerhetsrelaterade meddelanden"
+        },
+        "data_description": {
+          "road_filter_safety_bypass": "Om aktiverat visas händelser markerade som säkerhetsrelaterade av Trafikverket oavsett vägfilter. 'Viktig trafikinformation' visas alltid oavsett den här inställningen. Inaktiverat innebär att vägfiltret gäller strikt för alla händelsetyper, inklusive Trafikmeddelande."
         }
       }
     },

@@ -525,6 +525,9 @@ class TrafikinfoMessageTypeSensor(
                 "filter_mode": getattr(self.coordinator, "filter_mode", None),
                 "filter_counties": getattr(self.coordinator, "counties", None),
                 "filter_roads": getattr(self.coordinator, "filter_roads", None),
+                "filter_road_safety_bypass": getattr(
+                    self.coordinator, "road_filter_safety_bypass", None
+                ),
                 "filter_center": {
                     "latitude": getattr(self.coordinator, "latitude", None),
                     "longitude": getattr(self.coordinator, "longitude", None),
