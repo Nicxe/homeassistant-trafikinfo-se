@@ -24,6 +24,8 @@ CONF_SORT_LOCATION = "sort_location"
 
 # Road filtering
 CONF_FILTER_ROADS = "filter_roads"
+CONF_ROAD_FILTER_SAFETY_BYPASS = "road_filter_safety_bypass"
+DEFAULT_ROAD_FILTER_SAFETY_BYPASS = False
 
 SORT_MODE_RELEVANCE = "relevance"  # important -> nearest -> newest
 SORT_MODE_NEAREST = "nearest"  # nearest -> newest

@@ -27,6 +27,7 @@ from .const import (
     CONF_COUNTIES,
     CONF_FILTER_MODE,
     CONF_FILTER_ROADS,
+    CONF_ROAD_FILTER_SAFETY_BYPASS,
     CONF_LATITUDE,
     CONF_LONGITUDE,
     CONF_MAX_ITEMS,
@@ -37,6 +38,7 @@ from .const import (
     DEFAULT_RADIUS_KM,
     DEFAULT_FILTER_MODE,
     DEFAULT_MAX_ITEMS,
+    DEFAULT_ROAD_FILTER_SAFETY_BYPASS,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SORT_MODE,
     DOMAIN,
@@ -428,6 +430,14 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
             raw_roads = parts
         if isinstance(raw_roads, list):
             self._filter_roads = [str(x).strip() for x in raw_roads if str(x).strip()]
+        self._road_filter_safety_bypass: bool = bool(
+            entry.options.get(
+                CONF_ROAD_FILTER_SAFETY_BYPASS,
+                entry.data.get(
+                    CONF_ROAD_FILTER_SAFETY_BYPASS, DEFAULT_ROAD_FILTER_SAFETY_BYPASS
+                ),
+            )
+        )
         self._sort_mode = str(
             entry.options.get(
                 CONF_SORT_MODE, entry.data.get(CONF_SORT_MODE, DEFAULT_SORT_MODE)
@@ -525,6 +535,10 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
         return list(self._filter_roads)
 
     @property
+    def road_filter_safety_bypass(self) -> bool:
+        return self._road_filter_safety_bypass
+
+    @property
     def sort_mode(self) -> str:
         return self._sort_mode
 
@@ -562,6 +576,14 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
             self._filter_roads = [str(x).strip() for x in raw_roads if str(x).strip()]
         else:
             self._filter_roads = []
+        self._road_filter_safety_bypass = bool(
+            self._entry.options.get(
+                CONF_ROAD_FILTER_SAFETY_BYPASS,
+                self._entry.data.get(
+                    CONF_ROAD_FILTER_SAFETY_BYPASS, DEFAULT_ROAD_FILTER_SAFETY_BYPASS
+                ),
+            )
+        )
         self._sort_mode = str(
             self._entry.options.get(
                 CONF_SORT_MODE, self._entry.data.get(CONF_SORT_MODE, DEFAULT_SORT_MODE)
@@ -637,9 +659,9 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
                 self._sort_longitude = float(self.hass.config.longitude)
 
     def _is_important_without_geo(self, event: TrafikinfoEvent) -> bool:
-        if event.safety_related_message is True:
-            return True
         if event.message_type == "Viktig trafikinformation":
+            return True
+        if self._road_filter_safety_bypass and event.safety_related_message is True:
             return True
         return False
 
