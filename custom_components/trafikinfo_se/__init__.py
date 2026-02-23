@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import logging
+from pathlib import Path
 from time import monotonic
 from typing import TYPE_CHECKING
 
@@ -33,6 +34,8 @@ from .coordinator import TrafikinfoCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[str] = ["sensor"]
+CARD_FILENAME = "trafikinfo-se-alert-card.js"
+PACKAGED_CARD_PATH = Path(__file__).resolve().parent / "www" / CARD_FILENAME
 
 
 @dataclass
@@ -80,8 +83,31 @@ def _get_dismissed_events(entry: ConfigEntry) -> dict[str, dict]:
     return dismissed
 
 
+def _ensure_dashboard_card_installed(hass: HomeAssistant) -> None:
+    """Install or update the bundled dashboard card in config/www."""
+    if not PACKAGED_CARD_PATH.exists():
+        _LOGGER.debug("Bundled dashboard card not found at %s", PACKAGED_CARD_PATH)
+        return
+
+    www_dir = Path(hass.config.path("www"))
+    target_path = www_dir / CARD_FILENAME
+
+    try:
+        source_bytes = PACKAGED_CARD_PATH.read_bytes()
+        www_dir.mkdir(parents=True, exist_ok=True)
+
+        if target_path.exists() and target_path.read_bytes() == source_bytes:
+            return
+
+        target_path.write_bytes(source_bytes)
+        _LOGGER.info("Installed or updated dashboard card at %s", target_path)
+    except OSError as err:
+        _LOGGER.warning("Could not install dashboard card in www folder: %s", err)
+
+
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the integration (YAML is not supported)."""
+    await hass.async_add_executor_job(_ensure_dashboard_card_installed, hass)
     await _async_register_services(hass)
     return True
 
