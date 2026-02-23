@@ -1,6 +1,7 @@
 {
   "domain": "trafikinfo_se",
   "name": "Trafikinfo SE",
+  "after_dependencies": ["lovelace"],
   "codeowners": ["@Nicxe"],
   "config_flow": true,
   "documentation": "https://github.com/Nicxe/homeassistant-trafikinfo-se",
@@ -8,5 +9,3 @@
   "issue_tracker": "https://github.com/Nicxe/homeassistant-trafikinfo-se/issues",
   "version": "0.0.0"
 }
-
-

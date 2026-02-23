@@ -23,12 +23,11 @@ You can also add the repository manually in HACS as type **Integration**.
 3. Restart Home Assistant.
 
 ### Alert card installation
-For normal HACS dashboard-card behavior (install in `www/community/...` and automatic resource handling by HACS), install the card from:
-- `https://github.com/Nicxe/homeassistant-trafikinfo-se-card`
+The alert card is bundled with this integration.
 
-The integration and card are developed together, but distributed through separate HACS categories:
-- Integration from `homeassistant-trafikinfo-se` (type: Integration)
-- Card from `homeassistant-trafikinfo-se-card` (type: Dashboard)
+When the integration starts, it automatically:
+- syncs the bundled card to `config/www/trafikinfo-se-alert-card.js`
+- creates or updates a Lovelace `module` resource at `/local/trafikinfo-se-alert-card.js?v=...` for cache-busting
 
 ## Configuration
 To add the integration, use this My button:
@@ -59,6 +58,7 @@ Each event includes fields such as `incident_key`, `change_type`, `message_type`
 ## Release assets and versioning
 Each GitHub release in this repository publishes:
 - `trafikinfo_se.zip` for integration installation
+- `trafikinfo-se-alert-card.js` as a standalone fallback asset
 
 The project uses one shared version across integration and card.
 
