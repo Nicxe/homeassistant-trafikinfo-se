@@ -3,4 +3,7 @@ node_modules/
 custom_components/trafikinfo_se.zip
 custom_components/trafikinfo_se/.vscode/settings.json
 custom_components/trafikinfo_se/releasenote.md
-/custom_components/trafikinfo_se/tests
+__pycache__/
+*.py[cod]
+/custom_components/trafikinfo_se/tests/*
+!/custom_components/trafikinfo_se/tests/test_frontend_resources.py
