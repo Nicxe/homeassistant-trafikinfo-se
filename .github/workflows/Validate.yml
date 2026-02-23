@@ -34,9 +34,3 @@ jobs:
 
       - name: Check card syntax
         run: node --experimental-default-type=module --check www/trafikinfo-se-alert-card.js
-
-      - name: Check bundled card syntax
-        run: node --experimental-default-type=module --check custom_components/trafikinfo_se/www/trafikinfo-se-alert-card.js
-
-      - name: Ensure card copies are in sync
-        run: cmp --silent www/trafikinfo-se-alert-card.js custom_components/trafikinfo_se/www/trafikinfo-se-alert-card.js

@@ -4,13 +4,13 @@
 This guide is for users who previously installed the alert card from `Nicxe/homeassistant-trafikinfo-se-card`.
 
 ## What changed?
-The alert card has moved into `Nicxe/homeassistant-trafikinfo-se` and is now released together with the integration.
+The integration remains in `Nicxe/homeassistant-trafikinfo-se`, while the card is distributed as a HACS Dashboard plugin from `Nicxe/homeassistant-trafikinfo-se-card` to preserve normal HACS card behavior.
 
 ## What you need to do
-1. Update to the latest integration release from `Nicxe/homeassistant-trafikinfo-se`.
-2. Restart Home Assistant so the integration can install or update `config/www/trafikinfo-se-alert-card.js`.
-3. Keep your Lovelace resource URL unchanged: `/local/trafikinfo-se-alert-card.js`.
-4. Hard refresh the browser (or clear frontend cache) after the update.
+1. Install or update the integration from `Nicxe/homeassistant-trafikinfo-se` in HACS as type **Integration**.
+2. Install or update the card from `Nicxe/homeassistant-trafikinfo-se-card` in HACS as type **Dashboard**.
+3. Let HACS manage the card placement in `www/community/` and resource registration.
+4. Hard refresh the browser (or clear frontend cache) after updates.
 
 ## Integration users
 No change is needed to the integration install flow. Continue using HACS for the integration package.
