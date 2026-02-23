@@ -29,6 +29,29 @@ When the integration starts, it automatically:
 - syncs the bundled card to `config/www/trafikinfo-se-alert-card.js`
 - creates or updates a Lovelace `module` resource at `/local/trafikinfo-se-alert-card.js?v=...` for cache-busting
 
+If you have just installed or updated, reload the browser once to ensure the latest card resource is loaded.
+
+## Card usage
+The card can be configured in the dashboard UI editor:
+
+1. Open your dashboard.
+2. Select **Edit dashboard**.
+3. Add a new card.
+4. Search for and select one of:
+   - `Trafikinfo SE – Händelser (Olycka/Hinder/Vägarbete/Restriktion)`
+   - `Trafikinfo SE – Viktig trafikinformation`
+
+You can also use the manual card types:
+- `custom:trafikinfo-se-alert-card`
+- `custom:trafikinfo-se-viktig-trafikinformation-card`
+
+### Manual fallback (if needed)
+Normally no manual Lovelace resource setup is required.
+
+If your dashboard does not load the card automatically, add this resource manually:
+- URL: `/local/trafikinfo-se-alert-card.js`
+- Type: `JavaScript Module`
+
 ## Configuration
 To add the integration, use this My button:
 
