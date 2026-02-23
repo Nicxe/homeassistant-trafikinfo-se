@@ -58,7 +58,8 @@ Each event includes fields such as `incident_key`, `change_type`, `message_type`
 ## Release assets and versioning
 Each GitHub release in this repository publishes:
 - `trafikinfo_se.zip` for integration installation
-- `trafikinfo-se-alert-card.js` as a standalone fallback asset
+
+The bundled alert card is included inside `trafikinfo_se.zip`.
 
 The project uses one shared version across integration and card.
 
