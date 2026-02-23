@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Questions & Support
+    url: https://community.home-assistant.io/t/trafikinfo-se-real-time-swedish-traffic-alerts-for-home-assistant/973654
+    about: For questions, help, and discussions, please use our dedicated Home Assistant community forum thread.
+  - name: 📖 Documentation
+    url: https://github.com/Nicxe/homeassistant-trafikinfo-se
+    about: Check the documentation before opening an issue.
