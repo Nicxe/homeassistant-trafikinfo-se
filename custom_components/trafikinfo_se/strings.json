@@ -49,6 +49,10 @@
           "road_filter_safety_bypass": "If enabled, events marked as safety-related by Trafikverket bypass the road filter and are always shown. 'Viktig trafikinformation' always bypasses the road filter regardless of this setting. Disable to apply road filtering strictly to all event types including Trafikmeddelande."
         }
       },
+      "reload_notice": {
+        "title": "Trafikinfo SE",
+        "description": "Setup is complete. Click submit to finish. After setup, reload the browser page once to make sure the dashboard card is available immediately."
+      },
       "reconfigure_filter_mode": {
         "title": "Trafikinfo SE",
         "description": "Choose how you want to filter traffic information.",

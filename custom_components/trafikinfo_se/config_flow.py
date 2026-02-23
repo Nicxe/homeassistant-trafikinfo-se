@@ -151,6 +151,32 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._filter_mode: str = DEFAULT_FILTER_MODE
         self._reconfigure_entry: config_entries.ConfigEntry | None = None
         self._reconfigure_defaults: dict[str, Any] = {}
+        self._pending_entry_title: str | None = None
+        self._pending_entry_data: dict[str, Any] | None = None
+
+    def _show_reload_notice_step(self, *, title: str, data: dict[str, Any]):
+        """Store entry payload and show final reload notice step."""
+        self._pending_entry_title = title
+        self._pending_entry_data = data
+        return self.async_show_form(step_id="reload_notice", data_schema=vol.Schema({}))
+
+    async def async_step_reload_notice(
+        self, user_input: dict[str, Any] | None = None
+    ):
+        """Final confirmation step before creating entry."""
+        if user_input is None:
+            return self.async_show_form(
+                step_id="reload_notice", data_schema=vol.Schema({})
+            )
+
+        if self._pending_entry_title is None or self._pending_entry_data is None:
+            return self.async_abort(reason="unknown")
+
+        title = self._pending_entry_title
+        data = self._pending_entry_data
+        self._pending_entry_title = None
+        self._pending_entry_data = None
+        return self.async_create_entry(title=title, data=data)
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None):
         """Handle the initial step."""
@@ -768,7 +794,7 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_ROAD_FILTER_SAFETY_BYPASS: safety_bypass,
                 CONF_MESSAGE_TYPES: msg_types,
             }
-            return self.async_create_entry(title=name, data=data)
+            return self._show_reload_notice_step(title=name, data=data)
 
         schema_dict: dict[vol.Marker, Any] = {}
         schema_dict.update(self._schema_name("Trafikinfo SE"))
@@ -865,7 +891,7 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_ROAD_FILTER_SAFETY_BYPASS: safety_bypass,
                         CONF_MESSAGE_TYPES: msg_types,
                     }
-                    return self.async_create_entry(title=name, data=data)
+                    return self._show_reload_notice_step(title=name, data=data)
 
         county_options = [{"label": "Hela Sverige", "value": COUNTY_ALL}] + [
             {"label": name, "value": code} for code, name in COUNTIES.items()
