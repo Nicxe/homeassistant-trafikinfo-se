@@ -1,5 +1,5 @@
 name: ❓ Question
-description: Ask a question about Trafikinfo SE
+description: Ask a question about Trafikinfo SE (integration or card)
 labels: ["question"]
 body:
   - type: markdown
