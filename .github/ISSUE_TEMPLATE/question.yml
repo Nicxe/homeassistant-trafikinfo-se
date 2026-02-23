@@ -1,7 +1,27 @@
 name: ❓ Question
-description: Ask a question about Trafikinfo SE
+description: Ask a question about Trafikinfo SE (integration or card)
 labels: ["question"]
 body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part is your question about? This is used to auto-label the issue.
+      options:
+        - Integration
+        - Alert Card
+        - Both
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What do you need help with?
+    validations:
+      required: true
+
   - type: markdown
     attributes:
       value: |
