@@ -23,11 +23,12 @@ You can also add the repository manually in HACS as type **Integration**.
 3. Restart Home Assistant.
 
 ### Alert card installation
-1. Download `trafikinfo-se-alert-card.js` from the same [latest release](https://github.com/Nicxe/homeassistant-trafikinfo-se/releases).
-2. Place it in `config/www/`.
-3. Add it as a Lovelace resource:
+When the integration is installed through HACS, the bundled card file is automatically installed to `config/www/trafikinfo-se-alert-card.js`.
+
+1. Add it as a Lovelace resource:
    - URL: `/local/trafikinfo-se-alert-card.js`
    - Type: `JavaScript Module`
+2. If you prefer manual installation, download `trafikinfo-se-alert-card.js` from the [latest release](https://github.com/Nicxe/homeassistant-trafikinfo-se/releases) and place it in `config/www/`.
 
 ## Configuration
 To add the integration, use this My button:
