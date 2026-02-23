@@ -7,10 +7,6 @@ const config = require("@nicxe/semantic-release-config")({
     {
       path: "custom_components/trafikinfo_se.zip",
       label: "trafikinfo_se.zip"
-    },
-    {
-      path: "www/trafikinfo-se-alert-card.js",
-      label: "trafikinfo-se-alert-card.js"
     }
   ]
 });
