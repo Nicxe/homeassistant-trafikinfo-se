@@ -10,6 +10,15 @@ if TYPE_CHECKING:
 
 DOMAIN = "trafikinfo_se"
 
+# Frontend card resource handling
+CARD_FILENAME = "trafikinfo-se-alert-card.js"
+CARD_WWW_DIR = "www"
+CARD_STATIC_BASE_PATH = f"/{DOMAIN}-static"
+CARD_CANONICAL_BASE_URL = f"{CARD_STATIC_BASE_PATH}/{CARD_FILENAME}"
+CARD_LEGACY_BASE_URL = f"/local/{CARD_FILENAME}"
+FRONTEND_DATA_KEY = f"{DOMAIN}_frontend"
+FRONTEND_DATA_COMPONENT_LISTENER = f"{DOMAIN}_component_listener"
+
 CONF_API_KEY = "api_key"
 CONF_MAX_ITEMS = "max_items"
 CONF_MESSAGE_TYPES = "message_types"

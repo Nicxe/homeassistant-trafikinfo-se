@@ -28,6 +28,7 @@ from .const import (
     SERVICE_RESTORE_ALL_EVENTS,
     SERVICE_RESTORE_EVENT,
 )
+from .frontend import async_setup_frontend
 from .coordinator import TrafikinfoCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -82,6 +83,7 @@ def _get_dismissed_events(entry: ConfigEntry) -> dict[str, dict]:
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the integration (YAML is not supported)."""
+    await async_setup_frontend(hass)
     await _async_register_services(hass)
     return True
 

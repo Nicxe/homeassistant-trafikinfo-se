@@ -1,5 +1,5 @@
 name: 🐞 Bug Report
-description: Report a problem with Trafikinfo SE 
+description: Report a problem with Trafikinfo SE
 title: "[Bug]: "
 labels: ["bug"]
 assignees: ["Nicxe"]
@@ -8,7 +8,7 @@ body:
     id: component
     attributes:
       label: Component
-      description: Which part is affected? This is used to auto-label the issue.
+      description: Which part is affected?
       options:
         - Integration
         - Alert Card
@@ -21,7 +21,7 @@ body:
     attributes:
       label: Prerequisites
       options:
-        - label: I am running the latest version of Trafikinfo SE
+        - label: I am running the latest release
           required: true
         - label: I have searched existing issues
           required: true
@@ -31,8 +31,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: Trafikinfo SE Version
-      placeholder: e.g. 1.0.0
+      label: Release Version
+      placeholder: e.g. 1.2.3
     validations:
       required: true
 
@@ -55,21 +55,14 @@ body:
   - type: markdown
     attributes:
       value: |
-        ### Enable Debug Logging for Trafikinfo SE
+        ### Logs and diagnostics
 
-        Before submitting a bug report, please enable debug logging:
-
-        1. Go to **Settings → Devices & Services → Integrations**
-        2. Find **Trafikinfo SE** and click the three dots → **Enable Debug Logging**
-        3. Restart Home Assistant
-        4. Reproduce the issue
-        5. Go to **Settings → System → Logs**
-        6. Download the full log or copy the relevant part for Trafikinfo SE
-        Paste the debug log below.
+        For integration issues, enable debug logging before sharing logs.
+        For card issues, include your card configuration and browser console errors.
 
   - type: textarea
-    id: logs
+    id: diagnostics
     attributes:
-      label: Logs
-      description: Relevant Home Assistant logs
+      label: Logs / Browser Console / Card Config
+      description: Paste relevant diagnostics here.
       render: shell

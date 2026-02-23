@@ -49,6 +49,10 @@
           "road_filter_safety_bypass": "Om aktiverat visas händelser markerade som säkerhetsrelaterade av Trafikverket oavsett vägfilter. 'Viktig trafikinformation' visas alltid oavsett den här inställningen. Inaktiverat innebär att vägfiltret gäller strikt för alla händelsetyper, inklusive Trafikmeddelande."
         }
       },
+      "reload_notice": {
+        "title": "Trafikinfo SE",
+        "description": "Installationen är klar. Klicka på skicka för att slutföra. Efter installationen, ladda om webbläsarsidan en gång så att dashboard-kortet blir tillgängligt direkt."
+      },
       "reconfigure_filter_mode": {
         "title": "Trafikinfo SE",
         "description": "Välj hur du vill filtrera trafikinformation.",
