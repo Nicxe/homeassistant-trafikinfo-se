@@ -3,9 +3,8 @@
  * - www/smhi-alert-card.js
  * - www/krisinformation-alert-card.js
  */
-// Använd HA:s inbyggda Lit om tillgängligt, annars fallback till CDN
+// Använd HA:s inbyggda Lit om tillgängligt, annars fallback till CDN.
 const getLit = async () => {
-  // Home Assistant 2023.4+ exponerar Lit globalt
   if (window.LitElement && window.litHtml) {
     return {
       LitElement: window.LitElement,
@@ -13,7 +12,25 @@ const getLit = async () => {
       css: window.litHtml.css,
     };
   }
-  // Fallback för äldre HA-versioner eller fristående testning
+
+  // Try known HA frontend classes without waiting forever.
+  const candidates = ['ha-panel-lovelace', 'hui-masonry-view', 'hui-view'];
+  for (const name of candidates) {
+    const el = customElements.get(name);
+    if (!el) {
+      continue;
+    }
+    const base = Object.getPrototypeOf(el);
+    if (base?.prototype?.html && base?.prototype?.css) {
+      return {
+        LitElement: base,
+        html: base.prototype.html,
+        css: base.prototype.css,
+      };
+    }
+  }
+
+  // Last fallback for older HA versions or standalone testing.
   return import('https://unpkg.com/lit@3.1.0?module');
 };
 
