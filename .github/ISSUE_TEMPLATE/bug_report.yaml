@@ -11,7 +11,7 @@ body:
       description: Which part is affected?
       options:
         - Integration
-        - Alert Card
+        - Card
         - Both
     validations:
       required: true

@@ -11,7 +11,7 @@ body:
       description: Which part should be improved?
       options:
         - Integration
-        - Alert Card
+        - Card
         - Both
     validations:
       required: true
