@@ -2,8 +2,28 @@ name: ❓ Question
 description: Ask a question about Trafikinfo SE (integration or card)
 labels: ["question"]
 body:
-  - type: markdown
+  - type: dropdown
+    id: component
     attributes:
-      value: |
-        Please use the Home Assistant Community Forum for support and questions:
-        https://community.home-assistant.io/t/trafikinfo-se-real-time-swedish-traffic-alerts-for-home-assistant/973654
+      label: Component
+      description: What is your question about?
+      options:
+        - Integration
+        - Card
+        - Both
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your Question
+      description: Describe what you need help with.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Share relevant details, configuration, and what you already tried.
