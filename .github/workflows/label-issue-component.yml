@@ -1,0 +1,102 @@
+name: Label issue component
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  apply-component-labels:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.issue.pull_request == null }}
+    steps:
+      - name: Apply integration/card labels from issue form
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = issue.body || "";
+
+            const componentMatch = body.match(/###\s*Component\s*\r?\n+([^\r\n]+)/i);
+            if (!componentMatch) {
+              core.info("No component section found in issue body.");
+              return;
+            }
+
+            const componentValue = componentMatch[1].trim().toLowerCase();
+            core.info(`Component selected: ${componentValue}`);
+
+            const labelDefs = {
+              integration: {
+                color: "1D76DB",
+                description: "Issue affects the Trafikinfo SE integration",
+              },
+              card: {
+                color: "5319E7",
+                description: "Issue affects the Trafikinfo SE Lovelace card",
+              },
+            };
+
+            const targetLabels = [];
+            if (componentValue.includes("both")) {
+              targetLabels.push("integration", "card");
+            } else if (componentValue.includes("integration")) {
+              targetLabels.push("integration");
+            } else if (componentValue.includes("card") || componentValue.includes("alert")) {
+              targetLabels.push("card");
+            }
+
+            if (!targetLabels.length) {
+              core.info("No mapped labels for component value.");
+              return;
+            }
+
+            for (const [name, meta] of Object.entries(labelDefs)) {
+              try {
+                await github.rest.issues.getLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name,
+                });
+              } catch (error) {
+                if (error.status !== 404) {
+                  throw error;
+                }
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name,
+                  color: meta.color,
+                  description: meta.description,
+                });
+              }
+            }
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels: targetLabels,
+            });
+
+            const labelsToRemove = Object.keys(labelDefs).filter(
+              (label) => !targetLabels.includes(label)
+            );
+
+            for (const label of labelsToRemove) {
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  name: label,
+                });
+              } catch (error) {
+                if (error.status !== 404) {
+                  throw error;
+                }
+              }
+            }
