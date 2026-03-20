@@ -8,11 +8,33 @@
           "api_key": "API key"
         }
       },
+      "entry_kind": {
+        "title": "Trafikinfo SE",
+        "description": "Choose whether this entry should track traffic incidents or travel time for one predefined Trafikverket route.",
+        "data": {
+          "entry_kind": "Entry type"
+        }
+      },
       "filter_mode": {
         "title": "Trafikinfo SE",
         "description": "Choose how you want to filter traffic information.",
         "data": {
           "filter_mode": "Filter mode"
+        }
+      },
+      "travel_time_route_scope": {
+        "title": "Trafikinfo SE",
+        "description": "Browse Trafikverket's predefined travel time routes. Coverage is currently concentrated in Stockholm, with smaller coverage in Västra Götaland and Skåne.",
+        "data": {
+          "route_catalog_county": "Route catalog area"
+        }
+      },
+      "travel_time_route": {
+        "title": "Trafikinfo SE",
+        "description": "Select one predefined Trafikverket route and optionally give the entry a custom name.",
+        "data": {
+          "route_id": "Route",
+          "name": "Name"
         }
       },
       "configure_coordinate": {
@@ -60,6 +82,21 @@
           "filter_mode": "Filter mode"
         }
       },
+      "reconfigure_travel_time_route_scope": {
+        "title": "Trafikinfo SE",
+        "description": "Choose which part of Trafikverket's predefined route catalog you want to browse.",
+        "data": {
+          "route_catalog_county": "Route catalog area"
+        }
+      },
+      "reconfigure_travel_time_route": {
+        "title": "Trafikinfo SE",
+        "description": "Select a new predefined route and optionally rename the entry.",
+        "data": {
+          "route_id": "Route",
+          "name": "Name"
+        }
+      },
       "reconfigure_coordinate": {
         "title": "Trafikinfo SE",
         "description": "Update coordinate and radius filtering.",
@@ -98,7 +135,9 @@
     "error": {
       "cannot_connect": "Failed to connect.",
       "invalid_auth": "Invalid API key.",
+      "invalid_route": "Select a valid route.",
       "missing_counties": "Select at least one county (or 'Sweden').",
+      "no_routes_found": "No routes were found for the selected catalog area.",
       "unknown": "Unexpected error."
     }
   },
@@ -144,6 +183,13 @@
         "data_description": {
           "road_filter_safety_bypass": "If enabled, events marked as safety-related by Trafikverket bypass the road filter and are always shown. 'Viktig trafikinformation' always bypasses the road filter regardless of this setting. Disable to apply road filtering strictly to all event types including Trafikmeddelande."
         }
+      },
+      "route": {
+        "title": "Trafikinfo SE options",
+        "description": "Rename the travel time route entry. Use reconfigure if you want to select a different route.",
+        "data": {
+          "name": "Name"
+        }
       }
     },
     "error": {
@@ -169,6 +215,15 @@
       },
       "vagarbete": {
         "name": "Roadworks"
+      },
+      "travel_time": {
+        "name": "Travel time"
+      },
+      "delay": {
+        "name": "Delay"
+      },
+      "traffic_status": {
+        "name": "Traffic status"
       }
     }
   }

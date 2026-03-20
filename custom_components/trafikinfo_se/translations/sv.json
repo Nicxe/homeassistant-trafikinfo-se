@@ -8,11 +8,33 @@
           "api_key": "API-nyckel"
         }
       },
+      "entry_kind": {
+        "title": "Trafikinfo SE",
+        "description": "Välj om den här posten ska följa trafikhändelser eller restid för en fördefinierad Trafikverket-rutt.",
+        "data": {
+          "entry_kind": "Typ av post"
+        }
+      },
       "filter_mode": {
         "title": "Trafikinfo SE",
         "description": "Välj hur du vill filtrera trafikinformation.",
         "data": {
           "filter_mode": "Filterläge"
+        }
+      },
+      "travel_time_route_scope": {
+        "title": "Trafikinfo SE",
+        "description": "Bläddra bland Trafikverkets fördefinierade restidsrutter. Täckningen är just nu främst koncentrerad till Stockholm, med mindre täckning i Västra Götaland och Skåne.",
+        "data": {
+          "route_catalog_county": "Ruttkatalog"
+        }
+      },
+      "travel_time_route": {
+        "title": "Trafikinfo SE",
+        "description": "Välj en fördefinierad Trafikverket-rutt och ange vid behov ett eget namn för posten.",
+        "data": {
+          "route_id": "Rutt",
+          "name": "Namn"
         }
       },
       "configure_coordinate": {
@@ -60,6 +82,21 @@
           "filter_mode": "Filterläge"
         }
       },
+      "reconfigure_travel_time_route_scope": {
+        "title": "Trafikinfo SE",
+        "description": "Välj vilken del av Trafikverkets fördefinierade ruttkatalog du vill bläddra i.",
+        "data": {
+          "route_catalog_county": "Ruttkatalog"
+        }
+      },
+      "reconfigure_travel_time_route": {
+        "title": "Trafikinfo SE",
+        "description": "Välj en ny fördefinierad rutt och byt vid behov namn på posten.",
+        "data": {
+          "route_id": "Rutt",
+          "name": "Namn"
+        }
+      },
       "reconfigure_coordinate": {
         "title": "Trafikinfo SE",
         "description": "Uppdatera koordinat- och radiefiltrering.",
@@ -98,7 +135,9 @@
     "error": {
       "cannot_connect": "Kunde inte ansluta.",
       "invalid_auth": "Ogiltig API-nyckel.",
+      "invalid_route": "Välj en giltig rutt.",
       "missing_counties": "Välj minst ett län (eller 'Hela Sverige').",
+      "no_routes_found": "Inga rutter hittades för det valda katalogområdet.",
       "unknown": "Oväntat fel."
     }
   },
@@ -144,6 +183,13 @@
         "data_description": {
           "road_filter_safety_bypass": "Om aktiverat visas händelser markerade som säkerhetsrelaterade av Trafikverket oavsett vägfilter. 'Viktig trafikinformation' visas alltid oavsett den här inställningen. Inaktiverat innebär att vägfiltret gäller strikt för alla händelsetyper, inklusive Trafikmeddelande."
         }
+      },
+      "route": {
+        "title": "Trafikinfo SE alternativ",
+        "description": "Byt namn på restidsposten. Använd omkonfigurera om du vill välja en annan rutt.",
+        "data": {
+          "name": "Namn"
+        }
       }
     },
     "error": {
@@ -169,6 +215,15 @@
       },
       "vagarbete": {
         "name": "Vägarbete"
+      },
+      "travel_time": {
+        "name": "Restid"
+      },
+      "delay": {
+        "name": "Försening"
+      },
+      "traffic_status": {
+        "name": "Trafikstatus"
       }
     }
   }
