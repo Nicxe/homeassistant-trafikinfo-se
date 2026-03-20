@@ -1573,6 +1573,14 @@ class TrafikinfoSeAlertCard extends LitElement {
         road: 'Road',
         location: 'Location',
         severity: 'Severity',
+        route: 'Route',
+        travel_time: 'Travel time',
+        free_flow: 'Free-flow',
+        delay: 'Delay',
+        traffic_status: 'Traffic status',
+        speed: 'Speed',
+        length: 'Length',
+        measured: 'Measured',
         restriction: 'Restriction',
         direction: 'Direction',
         period: 'Period',
@@ -1599,12 +1607,24 @@ class TrafikinfoSeAlertCard extends LitElement {
         dismissed_count: '{count} dismissed',
         dismissed_count_one: '1 dismissed',
         restore_all: 'Restore all',
+        route_no_data: 'No travel time data',
+        status_freeflow: 'Free flow',
+        status_heavy: 'Heavy traffic',
+        status_congested: 'Congested',
       },
       sv: {
         no_alerts: 'Inga händelser',
         max_items_zero: 'Händelser finns men listas inte i sensorn. Höj max_items i Trafikinfo SE-integrationens inställningar.',
         incident: 'Händelse',
         road: 'Väg',
+        route: 'Rutt',
+        travel_time: 'Restid',
+        free_flow: 'Friflöde',
+        delay: 'Försening',
+        traffic_status: 'Trafikstatus',
+        speed: 'Hastighet',
+        length: 'Längd',
+        measured: 'Mätt',
         location: 'Plats',
         severity: 'Allvarlighetsgrad',
         restriction: 'Restriktion',
@@ -1633,6 +1653,10 @@ class TrafikinfoSeAlertCard extends LitElement {
         dismissed_count: '{count} dolda',
         dismissed_count_one: '1 dold',
         restore_all: 'Återställ alla',
+        route_no_data: 'Ingen restidsdata',
+        status_freeflow: 'Normalt flöde',
+        status_heavy: 'Tät trafik',
+        status_congested: 'Köer',
       },
     };
     return (dict[lang] || dict.en)[key] || key;
@@ -1844,12 +1868,592 @@ class TrafikinfoSeViktigTrafikinformationCard extends TrafikinfoSeAlertCard {
   }
 }
 
+class TrafikinfoSeRouteCard extends TrafikinfoSeAlertCard {
+  static styles = [
+    TrafikinfoSeAlertCard.styles,
+    css`
+      .route-card {
+        grid-template-columns: 1fr;
+        gap: 14px;
+        align-items: stretch;
+      }
+      .route-content {
+        gap: 10px;
+      }
+      .route-summary {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 12px;
+        align-items: start;
+      }
+      .route-main {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .route-name {
+        font-weight: 700;
+        font-size: 1.05rem;
+        line-height: 1.3;
+        overflow-wrap: anywhere;
+      }
+      .route-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--secondary-text-color);
+        font-size: 0.92em;
+      }
+      .route-metrics {
+        min-width: 116px;
+        text-align: right;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 4px;
+      }
+      .route-value {
+        font-size: clamp(1.35rem, 3vw, 1.8rem);
+        font-weight: 700;
+        line-height: 1;
+        white-space: nowrap;
+      }
+      .route-delta {
+        font-size: 0.95em;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .route-delta.route-positive {
+        color: var(--error-color, #c62828);
+      }
+      .route-delta.route-negative {
+        color: var(--success-color, #2e7d32);
+      }
+      .route-details {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .route-freeflow {
+        --trafikinfo-accent: var(--success-color, #2e7d32);
+      }
+      .route-heavy {
+        --trafikinfo-accent: var(--warning-color, #ef6c00);
+      }
+      .route-congested {
+        --trafikinfo-accent: var(--error-color, #c62828);
+      }
+      .route-unknown {
+        --trafikinfo-accent: var(--primary-color);
+      }
+      @media (max-width: 480px) {
+        .route-summary {
+          grid-template-columns: 1fr;
+        }
+        .route-metrics {
+          min-width: 0;
+          text-align: left;
+          align-items: flex-start;
+        }
+      }
+    `,
+  ];
+
+  setConfig(config) {
+    const hasSingle = Boolean(config?.entity);
+    const hasMultiple = Array.isArray(config?.entities) && config.entities.length > 0;
+    if (!hasSingle && !hasMultiple) throw new Error('You must specify one or more entities.');
+    this.config = this._normalizeRouteConfig(config);
+  }
+
+  static getConfigElement() {
+    return document.createElement('trafikinfo-se-route-card-editor');
+  }
+
+  static getStubConfig(hass, entities) {
+    const routeEntities = (entities || []).filter((entityId) => {
+      const stateObj = hass?.states?.[entityId];
+      return stateObj?.attributes?.route_id && entityId.startsWith('sensor.');
+    });
+    const suggested = routeEntities.find((entityId) => String(entityId).includes('_travel_time'))
+      || routeEntities[0]
+      || '';
+    return {
+      entities: suggested ? [suggested] : [],
+      entity: suggested,
+      title: '',
+      show_header: true,
+      view_mode: 'summary',
+      show_delta: true,
+      show_status: true,
+      show_updated: true,
+      show_map: false,
+      time_format: 'auto',
+      map_zoom: null,
+      map_zoom_controls: true,
+      map_scroll_wheel: false,
+    };
+  }
+
+  getCardSize() {
+    const count = Math.max(this._routeItems().length, 1);
+    const base = (this._showHeader() ? 1 : 0) + count;
+    const showMap = this.config?.view_mode === 'detail'
+      && this.config?.show_map === true
+      && this._routeItems().some((item) => item.geometry);
+    return showMap ? base + 2 : base;
+  }
+
+  shouldUpdate(changed) {
+    if (changed.has('config')) return true;
+    if (changed.has('hass')) {
+      const key = JSON.stringify(
+        this._routeItems().map((item) => [
+          item.entityId,
+          item.routeId,
+          item.travelTimeMin,
+          item.delayMin,
+          item.status,
+          item.measureTime,
+          item.modifiedTime,
+          item.speedKmh,
+          item.lengthM,
+          item.freeFlowMin,
+          item.geometry,
+        ])
+      );
+      if (this._lastRouteKey !== key) {
+        this._lastRouteKey = key;
+        return true;
+      }
+      return false;
+    }
+    return true;
+  }
+
+  updated() {
+    this._maybeInitRouteMap();
+  }
+
+  render() {
+    if (!this.hass || !this.config) return html``;
+    const t = this._t.bind(this);
+    const routes = this._routeItems();
+    const firstRoute = routes[0];
+    const header = this._showHeader()
+      ? (
+          this.config.title
+          || (routes.length === 1 ? firstRoute?.routeName : null)
+          || t('travel_time')
+        )
+      : undefined;
+
+    if (routes.length === 0) {
+      return html`
+        <ha-card .header=${header}>
+          <div class="empty">${t('route_no_data')}</div>
+        </ha-card>
+      `;
+    }
+
+    const detailMode = this.config.view_mode === 'detail';
+    const routesWithGeometry = routes.filter((route) => !!route.geometry);
+    const showMap = detailMode && this.config.show_map === true && routesWithGeometry.length > 0;
+    const mapKey = this._routeMapKey(routesWithGeometry);
+    const mapId = `trafikinfo-route-map-${this._sanitizeDomId(mapKey)}`;
+    const statusId = `trafikinfo-route-map-status-${this._sanitizeDomId(mapKey)}`;
+    return html`
+      <ha-card .header=${header}>
+        <div class="alerts">
+          ${routes.map((route, idx) => this._renderRouteItem(route, idx))}
+          ${showMap ? html`
+            <div
+              class="map-wrap"
+              @pointerdown=${(e) => e.stopPropagation()}
+              @pointerup=${(e) => e.stopPropagation()}
+              @click=${(e) => e.stopPropagation()}
+            >
+              <div id=${statusId} class="map-status show">${t('map_loading')}</div>
+              <div id=${mapId} class="geo-map" data-map-key=${mapKey}></div>
+            </div>
+          ` : html``}
+        </div>
+      </ha-card>
+    `;
+  }
+
+  _normalizeRouteConfig(config) {
+    const normalized = { ...config };
+    const entityList = Array.isArray(normalized.entities)
+      ? normalized.entities.map((entityId) => String(entityId || '').trim()).filter(Boolean)
+      : [];
+    if (entityList.length === 0 && normalized.entity) {
+      entityList.push(String(normalized.entity).trim());
+    }
+    normalized.entities = [...new Set(entityList)];
+    if (normalized.entities.length === 1) {
+      normalized.entity = normalized.entities[0];
+    }
+    if (normalized.show_header === undefined) normalized.show_header = true;
+    if (normalized.view_mode === undefined) normalized.view_mode = 'summary';
+    if (!['summary', 'detail'].includes(String(normalized.view_mode))) {
+      normalized.view_mode = 'summary';
+    }
+    if (normalized.show_delta === undefined) normalized.show_delta = true;
+    if (normalized.show_status === undefined) normalized.show_status = true;
+    if (normalized.show_updated === undefined) normalized.show_updated = true;
+    if (normalized.show_map === undefined) normalized.show_map = false;
+    if (normalized.map_zoom_controls === undefined) normalized.map_zoom_controls = true;
+    if (normalized.map_scroll_wheel === undefined) normalized.map_scroll_wheel = false;
+    if (normalized.map_zoom === '' || normalized.map_zoom === null || normalized.map_zoom === undefined) {
+      normalized.map_zoom = null;
+    } else {
+      const zoomVal = Number(normalized.map_zoom);
+      normalized.map_zoom = Number.isFinite(zoomVal) ? Math.max(0, Math.min(18, zoomVal)) : null;
+    }
+    if (!['auto', 'minutes', 'hours_minutes'].includes(String(normalized.time_format))) {
+      normalized.time_format = 'auto';
+    }
+    return normalized;
+  }
+
+  _routeEntityIds() {
+    const entities = Array.isArray(this.config?.entities) ? this.config.entities : [];
+    const fallback = this.config?.entity ? [this.config.entity] : [];
+    return [...new Set([...entities, ...fallback].map((entityId) => String(entityId || '').trim()).filter(Boolean))];
+  }
+
+  _routeItems() {
+    const entityIds = this._routeEntityIds();
+    return entityIds
+      .map((entityId) => {
+        const stateObj = this.hass?.states?.[entityId];
+        const attrs = stateObj?.attributes || {};
+        const routeId = String(attrs.route_id || '').trim();
+        if (!stateObj || !routeId) return null;
+        return {
+          entityId,
+          routeId,
+          routeName: attrs.route_name || attrs.friendly_name || entityId,
+          travelTimeMin: this._routeNumber(stateObj.state),
+          delayMin: this._routeNumber(attrs.delay_min),
+          freeFlowMin: this._routeNumber(attrs.free_flow_time_min),
+          speedKmh: this._routeNumber(attrs.speed_kmh),
+          lengthM: this._routeNumber(attrs.length_m),
+          status: this._routeStatus(attrs.traffic_status),
+          measureTime: attrs.measure_time || null,
+          modifiedTime: attrs.modified_time || null,
+          geometry: String(attrs.geometry_wgs84 || '').trim() || null,
+        };
+      })
+      .filter(Boolean);
+  }
+
+  _renderRouteItem(route) {
+    const t = this._t.bind(this);
+    const detailMode = this.config.view_mode === 'detail';
+    const measureTime = route.measureTime || route.modifiedTime || null;
+    return html`
+      <div class="alert route-card ${this._routeStatusClass(route.status)} bg-severity">
+        <div class="content route-content">
+          <div class="route-summary">
+            <div class="route-main">
+              <div class="route-name">${route.routeName}</div>
+              ${this.config.show_status !== false && route.status ? html`
+                <div class="route-status">
+                  <ha-icon icon=${this._routeStatusIcon(route.status)}></ha-icon>
+                  <span>${this._routeStatusLabel(route.status)}</span>
+                </div>
+              ` : html``}
+            </div>
+            <div class="route-metrics">
+              <div class="route-value">${this._formatRouteDuration(route.travelTimeMin)}</div>
+              ${this.config.show_delta !== false && route.delayMin !== null ? html`
+                <div class="route-delta ${this._routeDeltaClass(route.delayMin)}">
+                  ${this._formatSignedRouteDuration(route.delayMin)}
+                </div>
+              ` : html``}
+            </div>
+          </div>
+
+          <div class="meta">
+            ${this.config.show_updated !== false && measureTime ? html`
+              <span><b>${t('measured')}:</b> ${this._formatDate(measureTime)}</span>
+            ` : html``}
+            ${this.config.show_delta !== false && route.delayMin !== null ? html`
+              <span><b>${t('delay')}:</b> ${this._formatSignedRouteDuration(route.delayMin)}</span>
+            ` : html``}
+          </div>
+
+          ${detailMode ? html`
+            <div class="route-details">
+              <div class="meta">
+                ${route.freeFlowMin !== null ? html`<span><b>${t('free_flow')}:</b> ${this._formatRouteDuration(route.freeFlowMin)}</span>` : html``}
+                ${route.speedKmh !== null ? html`<span><b>${t('speed')}:</b> ${this._formatSpeed(route.speedKmh)}</span>` : html``}
+                ${route.lengthM !== null ? html`<span><b>${t('length')}:</b> ${this._formatLength(route.lengthM)}</span>` : html``}
+                ${this.config.show_status !== false && route.status ? html`<span><b>${t('traffic_status')}:</b> ${this._routeStatusLabel(route.status)}</span>` : html``}
+              </div>
+            </div>
+          ` : html``}
+        </div>
+      </div>
+    `;
+  }
+
+  _routeNumber(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  _routeStatus(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    return normalized || null;
+  }
+
+  _routeStatusClass(status) {
+    if (status === 'freeflow') return 'route-freeflow';
+    if (status === 'heavy') return 'route-heavy';
+    if (status === 'congested') return 'route-congested';
+    return 'route-unknown';
+  }
+
+  _routeStatusIcon(status) {
+    if (status === 'freeflow') return 'mdi:traffic-light-outline';
+    if (status === 'heavy') return 'mdi:traffic-light';
+    if (status === 'congested') return 'mdi:car-brake-alert';
+    return 'mdi:traffic-light';
+  }
+
+  _routeStatusLabel(status) {
+    if (status === 'freeflow') return this._t('status_freeflow');
+    if (status === 'heavy') return this._t('status_heavy');
+    if (status === 'congested') return this._t('status_congested');
+    return String(status || this._t('unknown'))
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  }
+
+  _routeDeltaClass(value) {
+    if (value > 0) return 'route-positive';
+    if (value < 0) return 'route-negative';
+    return '';
+  }
+
+  _formatRouteDuration(value) {
+    if (value === null || value === undefined) return '—';
+    const rounded = Math.round(value * 10) / 10;
+    if (this.config?.time_format === 'minutes') {
+      return `${this._formatDecimalMinutes(rounded)} min`;
+    }
+
+    if (this.config?.time_format === 'hours_minutes' || Math.abs(rounded) >= 60) {
+      const sign = rounded < 0 ? '-' : '';
+      const totalMinutes = Math.round(Math.abs(rounded));
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      if (hours > 0) {
+        return `${sign}${hours} h ${minutes} min`;
+      }
+      return `${sign}${minutes} min`;
+    }
+
+    return `${this._formatDecimalMinutes(rounded)} min`;
+  }
+
+  _formatSignedRouteDuration(value) {
+    if (value === null || value === undefined) return '—';
+    if (value === 0) return '±0 min';
+    const sign = value > 0 ? '+' : '−';
+    return `${sign}${this._formatRouteDuration(Math.abs(value))}`;
+  }
+
+  _formatDecimalMinutes(value) {
+    return Number.isInteger(value) ? String(value) : value.toFixed(1);
+  }
+
+  _formatSpeed(value) {
+    return `${this._formatDecimalMinutes(Math.round(value * 10) / 10)} km/h`;
+  }
+
+  _formatLength(value) {
+    const km = value / 1000;
+    const rounded = Math.round(km * 10) / 10;
+    return `${this._formatDecimalMinutes(rounded)} km`;
+  }
+
+  _routeMapKey(routes) {
+    if (Array.isArray(routes) && routes.length > 0) {
+      return `trafikinfo-route-map-${routes.map((route) => route.routeId).join('-')}`;
+    }
+    return this.config.entity || 'trafikinfo-route';
+  }
+
+  _severityStyle(item) {
+    const status = this._routeStatus(item?.traffic_status);
+    const accentVar =
+      status === 'freeflow' ? 'var(--success-color, #2e7d32)'
+      : status === 'heavy' ? 'var(--warning-color, #ef6c00)'
+      : status === 'congested' ? 'var(--error-color, #c62828)'
+      : 'var(--primary-color)';
+    return {
+      color: accentVar,
+      fillColor: accentVar,
+      weight: 4,
+      opacity: 0.95,
+      fillOpacity: 0.18,
+    };
+  }
+
+  _maybeInitRouteMap() {
+    if (!this.renderRoot) return;
+
+    const detailMode = this.config?.view_mode === 'detail';
+    const routes = this._routeItems().filter((route) => !!route.geometry);
+    const showMap = detailMode && this.config?.show_map === true && routes.length > 0;
+    const key = this._routeMapKey(routes);
+    const activeKeys = new Set();
+
+    if (showMap) {
+      const mapId = `trafikinfo-route-map-${this._sanitizeDomId(key)}`;
+      const el = this.renderRoot.querySelector(`#${mapId}`);
+      if (el) {
+        activeKeys.add(key);
+        this._ensureLeafletAndRenderRouteCollection(key, el, routes).catch(() => {
+          const statusEl = this.renderRoot?.querySelector?.(`#trafikinfo-route-map-status-${this._sanitizeDomId(key)}`);
+          if (statusEl) {
+            statusEl.textContent = this._t('map_failed');
+            statusEl.classList.add('show');
+          }
+        });
+      }
+    }
+
+    for (const [mapKey, entry] of this._maps.entries()) {
+      if (activeKeys.has(mapKey)) continue;
+      try { entry?.map?.remove?.(); } catch (e) {}
+      this._maps.delete(mapKey);
+    }
+  }
+
+  async _ensureLeafletAndRenderRouteCollection(key, containerEl, routes) {
+    this._ensureLeafletCssInShadowRoot();
+    const statusEl = this.renderRoot?.querySelector?.(`#trafikinfo-route-map-status-${this._sanitizeDomId(key)}`);
+    if (statusEl) {
+      statusEl.textContent = this._t('map_loading_leaflet');
+      statusEl.classList.add('show');
+    }
+    const L = await this._ensureLeaflet();
+    if (!L) return;
+
+    const routeSegments = routes
+      .map((route) => ({
+        ...route,
+        points: this._wktLonLatPoints(route.geometry),
+      }))
+      .filter((route) => route.points.length > 0);
+
+    if (!routeSegments.length) {
+      if (statusEl) {
+        statusEl.textContent = this._t('map_failed');
+        statusEl.classList.add('show');
+      }
+      return;
+    }
+
+    const sig = routeSegments
+      .map((route) => `${route.routeId}:${route.status}:${route.geometry}`)
+      .join('|');
+    const mapZoom = Number.isFinite(this.config?.map_zoom) ? this.config.map_zoom : null;
+    const zoomKey = mapZoom === null ? 'auto' : String(mapZoom);
+    const existing = this._maps.get(key);
+    const containerChanged = existing?.container && existing.container !== containerEl;
+    if (existing && containerChanged) {
+      try { existing.map.remove(); } catch (e) {}
+      this._maps.delete(key);
+    }
+
+    let entry = this._maps.get(key);
+    if (!entry) {
+      const map = L.map(containerEl, {
+        zoomControl: this.config?.map_zoom_controls !== false,
+        attributionControl: false,
+        scrollWheelZoom: this.config?.map_scroll_wheel === true,
+        doubleClickZoom: true,
+        boxZoom: false,
+        keyboard: false,
+        touchZoom: true,
+        tap: false,
+      });
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        attribution: '&copy; OpenStreetMap contributors',
+      }).addTo(map);
+      entry = { map, layer: null, sig: '', container: containerEl, zoomKey: 'auto' };
+      this._maps.set(key, entry);
+    }
+
+    let layerUpdated = false;
+    if (entry.sig !== sig) {
+      if (statusEl) {
+        statusEl.textContent = this._t('map_rendering');
+        statusEl.classList.add('show');
+      }
+      try { entry.layer?.remove?.(); } catch (e) {}
+
+      const layers = routeSegments.map((route) => {
+        const style = this._severityStyle({ traffic_status: route.status });
+        if (route.points.length === 1) {
+          return L.circleMarker(route.points[0], { ...style, radius: 8 });
+        }
+        return L.polyline(route.points, style);
+      });
+      entry.layer = L.featureGroup(layers).addTo(entry.map);
+      entry.sig = sig;
+      layerUpdated = true;
+    }
+
+    if (layerUpdated || entry.zoomKey !== zoomKey) {
+      try {
+        const bounds = entry.layer?.getBounds?.();
+        if (bounds && bounds.isValid && bounds.isValid()) {
+          if (mapZoom !== null) {
+            const center = bounds.getCenter?.();
+            if (center) {
+              entry.map.setView(center, mapZoom);
+            } else {
+              entry.map.fitBounds(bounds, { padding: [12, 12] });
+            }
+          } else {
+            entry.map.fitBounds(bounds, { padding: [12, 12] });
+          }
+        }
+      } catch (e) {}
+      entry.zoomKey = zoomKey;
+    }
+
+    requestAnimationFrame(() => {
+      try { entry.map.invalidateSize(); } catch (e) {}
+    });
+
+    if (statusEl) {
+      statusEl.classList.remove('show');
+      statusEl.textContent = '';
+    }
+  }
+}
+
 if (!customElements.get('trafikinfo-se-alert-card')) {
   customElements.define('trafikinfo-se-alert-card', TrafikinfoSeAlertCard);
 }
 
 if (!customElements.get('trafikinfo-se-viktig-trafikinformation-card')) {
   customElements.define('trafikinfo-se-viktig-trafikinformation-card', TrafikinfoSeViktigTrafikinformationCard);
+}
+
+if (!customElements.get('trafikinfo-se-route-card')) {
+  customElements.define('trafikinfo-se-route-card', TrafikinfoSeRouteCard);
 }
 
 class TrafikinfoSeAlertCardEditor extends LitElement {
@@ -2238,8 +2842,105 @@ class TrafikinfoSeAlertCardEditor extends LitElement {
   };
 }
 
+class TrafikinfoSeRouteCardEditor extends LitElement {
+  static properties = {
+    hass: {},
+    _config: {},
+  };
+
+  static styles = css`
+    .container { padding: 8px 0 0 0; }
+  `;
+
+  setConfig(config) {
+    this._config = { ...config };
+  }
+
+  render() {
+    if (!this.hass || !this._config) return html``;
+
+    const schema = [
+      { name: 'entities', label: 'Entities', required: true, selector: { entity: { domain: 'sensor', integration: 'trafikinfo_se', multiple: true } } },
+      { name: 'title', label: 'Title', selector: { text: {} } },
+      { name: 'show_header', label: 'Show header', selector: { boolean: {} } },
+      {
+        name: 'view_mode',
+        label: 'View mode',
+        selector: { select: { mode: 'dropdown', options: [
+          { value: 'summary', label: 'Summary' },
+          { value: 'detail', label: 'Detail' },
+        ] } },
+      },
+      { name: 'show_delta', label: 'Show delta vs free-flow', selector: { boolean: {} } },
+      { name: 'show_status', label: 'Show traffic status', selector: { boolean: {} } },
+      { name: 'show_updated', label: 'Show measured time', selector: { boolean: {} } },
+      { name: 'show_map', label: 'Show map in detail view', selector: { boolean: {} } },
+      {
+        name: 'time_format',
+        label: 'Time format',
+        selector: { select: { mode: 'dropdown', options: [
+          { value: 'auto', label: 'Auto' },
+          { value: 'minutes', label: 'Minutes' },
+          { value: 'hours_minutes', label: 'Hours and minutes' },
+        ] } },
+      },
+      { name: 'map_zoom', label: 'Map zoom level (0 = world, 18 = street)', selector: { number: { min: 0, max: 18, mode: 'box' } } },
+      { name: 'map_zoom_controls', label: 'Map zoom controls (+/−)', selector: { boolean: {} } },
+      { name: 'map_scroll_wheel', label: 'Map scroll wheel zoom', selector: { boolean: {} } },
+    ];
+
+    const data = {
+      entities: Array.isArray(this._config.entities)
+        ? this._config.entities
+        : (this._config.entity ? [this._config.entity] : []),
+      title: this._config.title || '',
+      show_header: this._config.show_header !== undefined ? this._config.show_header : true,
+      view_mode: this._config.view_mode || 'summary',
+      show_delta: this._config.show_delta !== undefined ? this._config.show_delta : true,
+      show_status: this._config.show_status !== undefined ? this._config.show_status : true,
+      show_updated: this._config.show_updated !== undefined ? this._config.show_updated : true,
+      show_map: this._config.show_map !== undefined ? this._config.show_map : false,
+      time_format: this._config.time_format || 'auto',
+      map_zoom: this._config.map_zoom !== undefined && this._config.map_zoom !== null ? this._config.map_zoom : undefined,
+      map_zoom_controls: this._config.map_zoom_controls !== undefined ? this._config.map_zoom_controls : true,
+      map_scroll_wheel: this._config.map_scroll_wheel !== undefined ? this._config.map_scroll_wheel : false,
+    };
+
+    return html`
+      <div class="container">
+        <ha-form
+          .hass=${this.hass}
+          .data=${data}
+          .schema=${schema}
+          .computeLabel=${this._computeLabel}
+          @value-changed=${this._valueChanged}
+        ></ha-form>
+      </div>
+    `;
+  }
+
+  _valueChanged = (ev) => {
+    if (!this._config) return;
+    const value = ev.detail?.value || {};
+    const next = { ...this._config, ...value };
+    if (Array.isArray(next.entities)) {
+      next.entities = [...new Set(next.entities.map((entityId) => String(entityId || '').trim()).filter(Boolean))];
+      if (next.entities.length === 1) next.entity = next.entities[0];
+      else delete next.entity;
+    }
+    this._config = next;
+    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: this._config } }));
+  };
+
+  _computeLabel = (schema) => schema.label || schema.name;
+}
+
 if (!customElements.get('trafikinfo-se-alert-card-editor')) {
   customElements.define('trafikinfo-se-alert-card-editor', TrafikinfoSeAlertCardEditor);
+}
+
+if (!customElements.get('trafikinfo-se-route-card-editor')) {
+  customElements.define('trafikinfo-se-route-card-editor', TrafikinfoSeRouteCardEditor);
 }
 
 // Register the card so it appears in the "Add card" dialog
@@ -2255,6 +2956,13 @@ window.customCards.push({
   type: 'trafikinfo-se-viktig-trafikinformation-card',
   name: 'Trafikinfo SE – Viktig trafikinformation',
   description: 'Använd med sensor.trafikinfo_se_viktig_trafikinformation.',
+  preview: true,
+});
+
+window.customCards.push({
+  type: 'trafikinfo-se-route-card',
+  name: 'Trafikinfo SE – Restid på rutt',
+  description: 'Använd med en eller flera TravelTimeRoute-sensorer för att visa restid, avvikelse, trafikstatus och en gemensam karta för valda Trafikverket-rutter.',
   preview: true,
 });
 

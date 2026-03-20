@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -7,7 +8,10 @@ from homeassistant.components.lovelace.const import LOVELACE_DATA
 from homeassistant.const import CONF_ID, CONF_TYPE
 
 from custom_components.trafikinfo_se import frontend
-from custom_components.trafikinfo_se.const import CARD_CANONICAL_BASE_URL, CARD_LEGACY_BASE_URL
+from custom_components.trafikinfo_se.const import (
+    CARD_CANONICAL_BASE_URL,
+    CARD_LEGACY_BASE_URL,
+)
 
 
 class _FakeResources:
@@ -179,3 +183,11 @@ async def test_ensure_resource_falls_back_without_lovelace(hass, monkeypatch) ->
     ok = await frontend._async_ensure_card_resource(hass)
 
     assert ok is False
+
+
+def test_bundled_card_registers_route_card() -> None:
+    card_path = Path(frontend._card_file_path())
+    card_text = card_path.read_text(encoding="utf-8")
+
+    assert "trafikinfo-se-route-card" in card_text
+    assert "trafikinfo-se-route-card-editor" in card_text

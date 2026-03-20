@@ -15,11 +15,14 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import aiohttp_client
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.selector import selector
 
+from .coordinator import TrafikinfoAPIError, TrafikinfoAuthenticationError
 from .const import (
     CONF_API_KEY,
     CONF_COUNTIES,
+    CONF_ENTRY_KIND,
     CONF_FILTER_ROADS,
     CONF_ROAD_FILTER_SAFETY_BYPASS,
     CONF_FILTER_MODE,
@@ -29,6 +32,10 @@ from .const import (
     CONF_MAX_ITEMS,
     CONF_MESSAGE_TYPES,
     CONF_RADIUS_KM,
+    CONF_ROUTE_CATALOG_COUNTY,
+    CONF_ROUTE_COUNTY_NO,
+    CONF_ROUTE_ID,
+    CONF_ROUTE_NAME,
     CONF_SORT_LOCATION,
     CONF_SORT_MODE,
     COUNTY_ALL,
@@ -41,6 +48,8 @@ from .const import (
     DEFAULT_ROAD_FILTER_SAFETY_BYPASS,
     DEFAULT_SORT_MODE,
     DOMAIN,
+    ENTRY_KIND_INCIDENT,
+    ENTRY_KIND_TRAVEL_TIME_ROUTE,
     FILTER_MODE_COORDINATE,
     FILTER_MODE_COUNTY,
     SORT_MODE_NEAREST,
@@ -50,6 +59,7 @@ from .const import (
     TRAFIKVERKET_DATACACHE_URL,
     get_user_agent,
 )
+from .travel_time_route import TravelTimeRouteCatalogEntry, async_fetch_route_catalog
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -144,11 +154,14 @@ async def _async_test_api_key(hass: HomeAssistant, api_key: str) -> _TestResult:
 class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Trafikinfo SE."""
 
-    VERSION = 6
+    VERSION = 7
 
     def __init__(self) -> None:
         self._api_key: str | None = None
+        self._entry_kind: str = ENTRY_KIND_INCIDENT
         self._filter_mode: str = DEFAULT_FILTER_MODE
+        self._route_catalog_county: str = COUNTY_ALL
+        self._route_catalog: list[TravelTimeRouteCatalogEntry] = []
         self._reconfigure_entry: config_entries.ConfigEntry | None = None
         self._reconfigure_defaults: dict[str, Any] = {}
         self._pending_entry_title: str | None = None
@@ -160,9 +173,60 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._pending_entry_data = data
         return self.async_show_form(step_id="reload_notice", data_schema=vol.Schema({}))
 
-    async def async_step_reload_notice(
-        self, user_input: dict[str, Any] | None = None
-    ):
+    def _entry_kind_options(self) -> list[dict[str, str]]:
+        """Return localized entry-kind selector options."""
+        return [
+            {"label": "Trafikhändelser", "value": ENTRY_KIND_INCIDENT},
+            {
+                "label": "Restid på Trafikverkets rutter",
+                "value": ENTRY_KIND_TRAVEL_TIME_ROUTE,
+            },
+        ]
+
+    def _route_catalog_county_options(self) -> list[dict[str, str]]:
+        """Return county selector options for TravelTimeRoute discovery."""
+        return [{"label": "Hela katalogen", "value": COUNTY_ALL}] + [
+            {"label": name, "value": code} for code, name in COUNTIES.items()
+        ]
+
+    def _route_option_label(self, route: TravelTimeRouteCatalogEntry) -> str:
+        """Return a user-facing label for one route option."""
+        if route.county_no is None:
+            return route.name
+        county_label = COUNTIES.get(str(route.county_no), f"Län {route.county_no}")
+        return f"{route.name} ({county_label})"
+
+    def _route_by_id(self, route_id: str) -> TravelTimeRouteCatalogEntry | None:
+        """Look up a route in the currently loaded catalog."""
+        for route in self._route_catalog:
+            if route.route_id == route_id:
+                return route
+        return None
+
+    def _route_title_for_reconfigure(
+        self, entry: config_entries.ConfigEntry, route: TravelTimeRouteCatalogEntry, raw_name: str
+    ) -> str:
+        """Choose the updated title when reconfiguring a route entry."""
+        if not raw_name:
+            return route.name
+
+        current_title = str(entry.title or "").strip()
+        previous_route_name = str(entry.data.get(CONF_ROUTE_NAME, "")).strip()
+        if current_title and raw_name == current_title and current_title == previous_route_name:
+            return route.name
+        return raw_name
+
+    def _remove_route_registry_entities(
+        self, entry: config_entries.ConfigEntry, route_id: str
+    ) -> None:
+        """Remove old route entities when the selected route changes."""
+        prefix = f"{entry.entry_id}_travel_time_route_{route_id}_"
+        ent_reg = er.async_get(self.hass)
+        for registry_entry in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
+            if registry_entry.unique_id.startswith(prefix):
+                ent_reg.async_remove(registry_entry.entity_id)
+
+    async def async_step_reload_notice(self, user_input: dict[str, Any] | None = None):
         """Final confirmation step before creating entry."""
         if user_input is None:
             return self.async_show_form(
@@ -202,7 +266,7 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors["base"] = "unknown"
                 else:
                     self._api_key = api_key
-                    return await self.async_step_filter_mode()
+                    return await self.async_step_entry_kind()
 
         schema = vol.Schema(
             {
@@ -210,6 +274,148 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+
+    async def async_step_entry_kind(self, user_input: dict[str, Any] | None = None):
+        """Choose whether this entry tracks incidents or a TravelTimeRoute."""
+        if not self._api_key:
+            return await self.async_step_user()
+
+        if user_input is not None:
+            entry_kind = str(
+                user_input.get(CONF_ENTRY_KIND, ENTRY_KIND_INCIDENT)
+                or ENTRY_KIND_INCIDENT
+            )
+            if entry_kind not in (
+                ENTRY_KIND_INCIDENT,
+                ENTRY_KIND_TRAVEL_TIME_ROUTE,
+            ):
+                entry_kind = ENTRY_KIND_INCIDENT
+            self._entry_kind = entry_kind
+            if entry_kind == ENTRY_KIND_TRAVEL_TIME_ROUTE:
+                return await self.async_step_travel_time_route_scope()
+            return await self.async_step_filter_mode()
+
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_ENTRY_KIND, default=ENTRY_KIND_INCIDENT
+                ): selector(
+                    {
+                        "select": {
+                            "options": self._entry_kind_options(),
+                            "mode": "dropdown",
+                        }
+                    }
+                )
+            }
+        )
+        return self.async_show_form(step_id="entry_kind", data_schema=schema)
+
+    async def async_step_travel_time_route_scope(
+        self, user_input: dict[str, Any] | None = None
+    ):
+        """Choose how to filter the TravelTimeRoute catalog."""
+        if not self._api_key:
+            return await self.async_step_user()
+
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            county_no = str(
+                user_input.get(CONF_ROUTE_CATALOG_COUNTY, COUNTY_ALL) or COUNTY_ALL
+            )
+            if county_no not in COUNTIES and county_no != COUNTY_ALL:
+                county_no = COUNTY_ALL
+
+            try:
+                routes = await async_fetch_route_catalog(
+                    self.hass,
+                    self._api_key,
+                    county_no=None if county_no == COUNTY_ALL else county_no,
+                )
+            except TrafikinfoAuthenticationError:
+                errors["base"] = "invalid_auth"
+            except TrafikinfoAPIError:
+                errors["base"] = "cannot_connect"
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.exception("Unexpected error fetching route catalog: %s", err)
+                errors["base"] = "unknown"
+            else:
+                if not routes:
+                    errors["base"] = "no_routes_found"
+                else:
+                    self._route_catalog_county = county_no
+                    self._route_catalog = routes
+                    return await self.async_step_travel_time_route()
+
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_ROUTE_CATALOG_COUNTY, default=self._route_catalog_county
+                ): selector(
+                    {
+                        "select": {
+                            "options": self._route_catalog_county_options(),
+                            "mode": "dropdown",
+                        }
+                    }
+                )
+            }
+        )
+        return self.async_show_form(
+            step_id="travel_time_route_scope",
+            data_schema=schema,
+            errors=errors,
+        )
+
+    async def async_step_travel_time_route(
+        self, user_input: dict[str, Any] | None = None
+    ):
+        """Select one TravelTimeRoute from the discovered catalog."""
+        if not self._api_key or not self._route_catalog:
+            return await self.async_step_travel_time_route_scope()
+
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            route_id = str(user_input.get(CONF_ROUTE_ID, "")).strip()
+            route = self._route_by_id(route_id)
+            raw_name = str(user_input.get(CONF_NAME) or "").strip()
+            if route is None:
+                errors["base"] = "invalid_route"
+            else:
+                title = raw_name or route.name
+                data = {
+                    CONF_API_KEY: self._api_key,
+                    CONF_ENTRY_KIND: ENTRY_KIND_TRAVEL_TIME_ROUTE,
+                    CONF_ROUTE_ID: route.route_id,
+                    CONF_ROUTE_NAME: route.name,
+                    CONF_ROUTE_COUNTY_NO: route.county_no,
+                    CONF_ROUTE_CATALOG_COUNTY: self._route_catalog_county,
+                }
+                return self._show_reload_notice_step(title=title, data=data)
+
+        route_options = [
+            {"label": self._route_option_label(route), "value": route.route_id}
+            for route in self._route_catalog
+        ]
+        default_route = route_options[0]["value"] if route_options else ""
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_ROUTE_ID, default=default_route): selector(
+                    {
+                        "select": {
+                            "options": route_options,
+                            "mode": "dropdown",
+                        }
+                    }
+                ),
+                vol.Optional(CONF_NAME, default=""): str,
+            }
+        )
+        return self.async_show_form(
+            step_id="travel_time_route",
+            data_schema=schema,
+            errors=errors,
+        )
 
     async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None):
         """Handle reconfigure initiated from the UI on an existing entry."""
@@ -219,6 +425,26 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Store entry and defaults for later steps
         self._reconfigure_entry = entry
+        entry_kind = str(entry.data.get(CONF_ENTRY_KIND, ENTRY_KIND_INCIDENT))
+        if entry_kind == ENTRY_KIND_TRAVEL_TIME_ROUTE:
+            self._entry_kind = ENTRY_KIND_TRAVEL_TIME_ROUTE
+            current_route_county = entry.data.get(
+                CONF_ROUTE_CATALOG_COUNTY, entry.data.get(CONF_ROUTE_COUNTY_NO)
+            )
+            current_route_county = str(current_route_county or COUNTY_ALL)
+            if current_route_county not in COUNTIES and current_route_county != COUNTY_ALL:
+                current_route_county = COUNTY_ALL
+
+            self._reconfigure_defaults = {
+                CONF_ROUTE_CATALOG_COUNTY: current_route_county,
+                CONF_ROUTE_ID: str(entry.data.get(CONF_ROUTE_ID, "")).strip(),
+                CONF_ROUTE_NAME: str(entry.data.get(CONF_ROUTE_NAME, "")).strip(),
+                CONF_NAME: entry.title
+                or str(entry.data.get(CONF_ROUTE_NAME, "")).strip()
+                or "Trafikinfo SE",
+            }
+            self._api_key = str(entry.data.get(CONF_API_KEY, "")).strip() or None
+            return await self.async_step_reconfigure_travel_time_route_scope()
 
         mode = str(
             entry.options.get(
@@ -332,6 +558,156 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return await self.async_step_reconfigure_filter_mode(user_input)
 
+    async def async_step_reconfigure_travel_time_route_scope(
+        self, user_input: dict[str, Any] | None = None
+    ):
+        """Reconfigure which part of the TravelTimeRoute catalog to browse."""
+        if self._reconfigure_entry is None:
+            return self.async_abort(reason="entry_not_found")
+
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            county_no = str(
+                user_input.get(
+                    CONF_ROUTE_CATALOG_COUNTY,
+                    self._reconfigure_defaults.get(
+                        CONF_ROUTE_CATALOG_COUNTY, COUNTY_ALL
+                    ),
+                )
+                or COUNTY_ALL
+            )
+            if county_no not in COUNTIES and county_no != COUNTY_ALL:
+                county_no = COUNTY_ALL
+
+            api_key = str(
+                self._reconfigure_entry.data.get(CONF_API_KEY, self._api_key or "")
+            ).strip()
+            try:
+                routes = await async_fetch_route_catalog(
+                    self.hass,
+                    api_key,
+                    county_no=None if county_no == COUNTY_ALL else county_no,
+                )
+            except TrafikinfoAuthenticationError:
+                errors["base"] = "invalid_auth"
+            except TrafikinfoAPIError:
+                errors["base"] = "cannot_connect"
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.exception(
+                    "Unexpected error fetching route catalog during reconfigure: %s",
+                    err,
+                )
+                errors["base"] = "unknown"
+            else:
+                if not routes:
+                    errors["base"] = "no_routes_found"
+                else:
+                    self._route_catalog_county = county_no
+                    self._route_catalog = routes
+                    return await self.async_step_reconfigure_travel_time_route()
+
+        default_county = str(
+            self._reconfigure_defaults.get(CONF_ROUTE_CATALOG_COUNTY, COUNTY_ALL)
+            or COUNTY_ALL
+        )
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_ROUTE_CATALOG_COUNTY, default=default_county
+                ): selector(
+                    {
+                        "select": {
+                            "options": self._route_catalog_county_options(),
+                            "mode": "dropdown",
+                        }
+                    }
+                )
+            }
+        )
+        return self.async_show_form(
+            step_id="reconfigure_travel_time_route_scope",
+            data_schema=schema,
+            errors=errors,
+        )
+
+    async def async_step_reconfigure_travel_time_route(
+        self, user_input: dict[str, Any] | None = None
+    ):
+        """Reconfigure the selected TravelTimeRoute."""
+        if self._reconfigure_entry is None:
+            return self.async_abort(reason="entry_not_found")
+        if not self._route_catalog:
+            return await self.async_step_reconfigure_travel_time_route_scope()
+
+        entry = self._reconfigure_entry
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            route_id = str(user_input.get(CONF_ROUTE_ID, "")).strip()
+            route = self._route_by_id(route_id)
+            raw_name = str(user_input.get(CONF_NAME) or "").strip()
+            if route is None:
+                errors["base"] = "invalid_route"
+            else:
+                old_route_id = str(entry.data.get(CONF_ROUTE_ID, "")).strip()
+                new_data = dict(entry.data)
+                new_data.update(
+                    {
+                        CONF_ENTRY_KIND: ENTRY_KIND_TRAVEL_TIME_ROUTE,
+                        CONF_ROUTE_ID: route.route_id,
+                        CONF_ROUTE_NAME: route.name,
+                        CONF_ROUTE_COUNTY_NO: route.county_no,
+                        CONF_ROUTE_CATALOG_COUNTY: self._route_catalog_county,
+                    }
+                )
+                new_options = dict(entry.options)
+                if old_route_id and old_route_id != route.route_id:
+                    self._remove_route_registry_entities(entry, old_route_id)
+
+                return self.async_update_reload_and_abort(
+                    entry=entry,
+                    data=new_data,
+                    options=new_options,
+                    reason="reconfigured_successful",
+                    title=self._route_title_for_reconfigure(entry, route, raw_name),
+                )
+
+        current_route_id = str(
+            self._reconfigure_defaults.get(CONF_ROUTE_ID, "") or ""
+        ).strip()
+        route_ids = {route.route_id for route in self._route_catalog}
+        if current_route_id not in route_ids and self._route_catalog:
+            current_route_id = self._route_catalog[0].route_id
+
+        route_options = [
+            {"label": self._route_option_label(route), "value": route.route_id}
+            for route in self._route_catalog
+        ]
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_ROUTE_ID, default=current_route_id): selector(
+                    {
+                        "select": {
+                            "options": route_options,
+                            "mode": "dropdown",
+                        }
+                    }
+                ),
+                vol.Optional(
+                    CONF_NAME,
+                    default=str(
+                        self._reconfigure_defaults.get(
+                            CONF_NAME, entry.title or "Trafikinfo SE"
+                        )
+                    ),
+                ): str,
+            }
+        )
+        return self.async_show_form(
+            step_id="reconfigure_travel_time_route",
+            data_schema=schema,
+            errors=errors,
+        )
+
     async def async_step_reconfigure_filter_mode(
         self, user_input: dict[str, Any] | None = None
     ):
@@ -413,6 +789,7 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             new_data = dict(entry.data)
             new_data.update(
                 {
+                    CONF_ENTRY_KIND: ENTRY_KIND_INCIDENT,
                     CONF_FILTER_MODE: FILTER_MODE_COORDINATE,
                     CONF_LATITUDE: lat,
                     CONF_LONGITUDE: lon,
@@ -568,6 +945,7 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     new_data = dict(entry.data)
                     new_data.update(
                         {
+                            CONF_ENTRY_KIND: ENTRY_KIND_INCIDENT,
                             CONF_FILTER_MODE: FILTER_MODE_COUNTY,
                             CONF_COUNTIES: counties,
                             CONF_MAX_ITEMS: max_items,
@@ -784,6 +1162,7 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             radius_km = float(user_input.get(CONF_RADIUS_KM, DEFAULT_RADIUS_KM))
             data = {
                 CONF_API_KEY: self._api_key,
+                CONF_ENTRY_KIND: ENTRY_KIND_INCIDENT,
                 CONF_FILTER_MODE: FILTER_MODE_COORDINATE,
                 CONF_LATITUDE: lat,
                 CONF_LONGITUDE: lon,
@@ -879,6 +1258,7 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     )
                     data = {
                         CONF_API_KEY: self._api_key,
+                        CONF_ENTRY_KIND: ENTRY_KIND_INCIDENT,
                         CONF_FILTER_MODE: FILTER_MODE_COUNTY,
                         CONF_COUNTIES: counties,
                         CONF_MAX_ITEMS: max_items,
@@ -947,6 +1327,9 @@ class TrafikinfoSEOptionsFlowHandler(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         self._config_entry = config_entry
+        self._entry_kind = str(
+            config_entry.data.get(CONF_ENTRY_KIND, ENTRY_KIND_INCIDENT)
+        )
         self._filter_mode: str = str(
             config_entry.options.get(
                 CONF_FILTER_MODE,
@@ -958,6 +1341,9 @@ class TrafikinfoSEOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         """Choose filter mode, then go to a mode-specific step (interactive UI)."""
+        if self._entry_kind == ENTRY_KIND_TRAVEL_TIME_ROUTE:
+            return await self.async_step_route(user_input)
+
         if user_input is not None:
             mode = str(
                 user_input.get(CONF_FILTER_MODE, DEFAULT_FILTER_MODE)
@@ -982,6 +1368,25 @@ class TrafikinfoSEOptionsFlowHandler(config_entries.OptionsFlow):
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)
+
+    async def async_step_route(self, user_input: dict[str, Any] | None = None):
+        """Options for TravelTimeRoute entries."""
+        default_name = (
+            self._config_entry.title
+            or str(self._config_entry.data.get(CONF_ROUTE_NAME, "")).strip()
+            or "Trafikinfo SE"
+        )
+
+        if user_input is not None:
+            new_name = str(user_input.get(CONF_NAME) or "").strip()
+            if new_name and new_name != (self._config_entry.title or ""):
+                self.hass.config_entries.async_update_entry(
+                    self._config_entry, title=new_name
+                )
+            return self.async_create_entry(title="", data=dict(self._config_entry.options))
+
+        schema = vol.Schema({vol.Optional(CONF_NAME, default=default_name): str})
+        return self.async_show_form(step_id="route", data_schema=schema)
 
     def _common_defaults(self) -> dict[str, Any]:
         default_name = self._config_entry.title or "Trafikinfo SE"
@@ -1138,6 +1543,7 @@ class TrafikinfoSEOptionsFlowHandler(config_entries.OptionsFlow):
             radius_km = float(user_input.get(CONF_RADIUS_KM, DEFAULT_RADIUS_KM))
             data.update(
                 {
+                    CONF_ENTRY_KIND: ENTRY_KIND_INCIDENT,
                     CONF_FILTER_MODE: FILTER_MODE_COORDINATE,
                     CONF_LATITUDE: lat,
                     CONF_LONGITUDE: lon,
@@ -1283,6 +1689,7 @@ class TrafikinfoSEOptionsFlowHandler(config_entries.OptionsFlow):
                     )
                     data.update(
                         {
+                            CONF_ENTRY_KIND: ENTRY_KIND_INCIDENT,
                             CONF_FILTER_MODE: FILTER_MODE_COUNTY,
                             CONF_COUNTIES: counties,
                             CONF_MAX_ITEMS: max_items,

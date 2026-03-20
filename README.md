@@ -39,10 +39,12 @@ The card can be configured in the dashboard UI editor:
 3. Add a new card.
 4. Search for and select one of:
    - `Trafikinfo SE – Händelser (Olycka/Hinder/Vägarbete/Restriktion)`
+   - `Trafikinfo SE – Restider`
    - `Trafikinfo SE – Viktig trafikinformation`
 
 You can also use the manual card types:
 - `custom:trafikinfo-se-alert-card`
+- `custom:trafikinfo-se-route-card`
 - `custom:trafikinfo-se-viktig-trafikinformation-card`
 
 ### Manual fallback (if needed)
@@ -70,6 +72,41 @@ If needed, add it manually via **Settings > Devices & Services > Add Integration
 - Restriktioner
 - Trafikmeddelande
 - Vägarbete
+
+## TravelTimeRoute support
+The integration now supports Trafikverket's `TravelTimeRoute` data model as a separate route-focused setup flow within the same integration.
+
+This mode is designed for commute-style monitoring, where the most important questions are how long a route takes right now, how much slower it is than normal, and whether traffic conditions are getting worse.
+
+When you add a route entry, the integration creates route-specific sensors for:
+- current travel time
+- delay compared with free-flow traffic
+- current traffic status
+
+The route data also includes geometry in WGS84, which the route card can use to draw the monitored road segment directly on a map.
+
+## Route card
+The route card is available as `custom:trafikinfo-se-route-card`.
+
+It supports both:
+- a single route sensor
+- multiple route sensors in the same card
+
+When you add multiple route sensors, the card lists them one after another and can show all selected road segments on the same map. Each route line is color-coded from the sensor state so it is easier to scan the traffic situation for a whole area such as Gothenburg.
+
+The route card can show:
+- current travel time
+- signed delay versus free-flow time
+- traffic status
+- update time
+- a shared map with route lines
+
+The map is optional and intended for the detailed card view.
+
+## TravelTimeRoute screenshot
+Add a screenshot of the route card here once one is available.
+
+![TravelTimeRoute card screenshot](docs/images/travel-time-route-card.png)
 
 ## Automation triggers (event bus)
 For sensors **Hinder** and **Olycka**, the integration emits one event per new or updated incident:

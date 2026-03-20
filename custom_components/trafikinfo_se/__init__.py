@@ -21,15 +21,20 @@ from .const import (
     ATTR_EVENT_KEY,
     ATTR_SIGNATURE,
     CONF_DISMISSED_EVENTS,
+    CONF_ENTRY_KIND,
     CONF_MESSAGE_TYPES,
+    CONF_ROUTE_ID,
     DEFAULT_MESSAGE_TYPES,
     DOMAIN,
+    ENTRY_KIND_INCIDENT,
+    ENTRY_KIND_TRAVEL_TIME_ROUTE,
     SERVICE_DISMISS_EVENT,
     SERVICE_RESTORE_ALL_EVENTS,
     SERVICE_RESTORE_EVENT,
 )
-from .frontend import async_setup_frontend
 from .coordinator import TrafikinfoCoordinator
+from .frontend import async_setup_frontend
+from .travel_time_route import TravelTimeRouteCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -40,7 +45,9 @@ PLATFORMS: list[str] = ["sensor"]
 class TrafikinfoRuntimeData:
     """Runtime data for Trafikinfo SE integration."""
 
-    coordinator: TrafikinfoCoordinator
+    entry_kind: str
+    coordinator: TrafikinfoCoordinator | None = None
+    travel_time_route_coordinator: TravelTimeRouteCoordinator | None = None
 
 
 if TYPE_CHECKING:
@@ -79,6 +86,14 @@ def _get_dismissed_events(entry: ConfigEntry) -> dict[str, dict]:
     if not isinstance(dismissed, dict):
         return {}
     return dismissed
+
+
+def _get_entry_kind(entry: ConfigEntry) -> str:
+    """Return the normalized entry kind for a config entry."""
+    entry_kind = str(entry.data.get(CONF_ENTRY_KIND, ENTRY_KIND_INCIDENT))
+    if entry_kind not in (ENTRY_KIND_INCIDENT, ENTRY_KIND_TRAVEL_TIME_ROUTE):
+        return ENTRY_KIND_INCIDENT
+    return entry_kind
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
@@ -155,7 +170,8 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         # Trigger coordinator refresh so restored events appear immediately
         if hasattr(entry, "runtime_data") and entry.runtime_data:
             coordinator = entry.runtime_data.coordinator
-            await coordinator.async_request_refresh()
+            if coordinator is not None:
+                await coordinator.async_request_refresh()
 
         _LOGGER.debug("Restored all events for entry %s", entry_id)
 
@@ -181,30 +197,49 @@ async def _async_register_services(hass: HomeAssistant) -> None:
 
 async def async_setup_entry(hass: HomeAssistant, entry: TrafikinfoConfigEntry) -> bool:
     """Set up Trafikinfo SE from a config entry."""
-    coordinator = TrafikinfoCoordinator(hass, entry)
+    entry_kind = _get_entry_kind(entry)
+    coordinator: TrafikinfoCoordinator | None = None
+    route_coordinator: TravelTimeRouteCoordinator | None = None
+
+    if entry_kind == ENTRY_KIND_TRAVEL_TIME_ROUTE:
+        route_coordinator = TravelTimeRouteCoordinator(hass, entry)
+        refresh_target = route_coordinator
+        refresh_label = "travel time route coordinator"
+    else:
+        coordinator = TrafikinfoCoordinator(hass, entry)
+        refresh_target = coordinator
+        refresh_label = "incident coordinator"
+
     try:
         start = monotonic()
         _LOGGER.debug(
-            "Starting coordinator first refresh (entry_id=%s, name=%s)",
+            "Starting %s first refresh (entry_id=%s, name=%s)",
+            refresh_label,
             entry.entry_id,
             entry.title,
         )
-        await coordinator.async_config_entry_first_refresh()
+        await refresh_target.async_config_entry_first_refresh()
         _LOGGER.debug(
-            "Coordinator first refresh done in %.3fs (entry_id=%s)",
+            "%s first refresh done in %.3fs (entry_id=%s)",
+            refresh_label,
             monotonic() - start,
             entry.entry_id,
         )
     except Exception as ex:
         _LOGGER.debug(
-            "Coordinator first refresh failed after %.3fs (entry_id=%s): %s",
+            "%s first refresh failed after %.3fs (entry_id=%s): %s",
+            refresh_label,
             monotonic() - start,
             entry.entry_id,
             ex,
         )
         raise ConfigEntryNotReady from ex
 
-    entry.runtime_data = TrafikinfoRuntimeData(coordinator=coordinator)
+    entry.runtime_data = TrafikinfoRuntimeData(
+        entry_kind=entry_kind,
+        coordinator=coordinator,
+        travel_time_route_coordinator=route_coordinator,
+    )
 
     async def _options_updated(hass: HomeAssistant, updated_entry: ConfigEntry) -> None:
         # Options can affect entity creation (enabled message types), so reload entry.
@@ -223,7 +258,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: TrafikinfoConfigEntry) 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Migrate old config entries."""
-    if entry.version >= 6:
+    if entry.version >= 7:
         return True
 
     _LOGGER.debug(
@@ -352,8 +387,19 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         new_data.pop("scan_interval", None)
         new_options.pop("scan_interval", None)
 
+    if entry.version < 7:
+        # v7: Introduce entry_kind for incident vs TravelTimeRoute entries.
+        if new_data.get(CONF_ENTRY_KIND) not in (
+            ENTRY_KIND_INCIDENT,
+            ENTRY_KIND_TRAVEL_TIME_ROUTE,
+        ):
+            if CONF_ROUTE_ID in new_data:
+                new_data[CONF_ENTRY_KIND] = ENTRY_KIND_TRAVEL_TIME_ROUTE
+            else:
+                new_data[CONF_ENTRY_KIND] = ENTRY_KIND_INCIDENT
+
     hass.config_entries.async_update_entry(
-        entry, data=new_data, options=new_options, version=6
+        entry, data=new_data, options=new_options, version=7
     )
-    _LOGGER.debug("Migration to version 6 successful for %s", entry.entry_id)
+    _LOGGER.debug("Migration to version 7 successful for %s", entry.entry_id)
     return True

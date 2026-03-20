@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 import hashlib
 import logging
 from typing import Any
 from urllib.parse import quote
 
 from homeassistant.components.sensor import (
+    SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -25,12 +28,17 @@ from .__init__ import TrafikinfoConfigEntry
 from .const import (
     ATTRIBUTION,
     CONF_DISMISSED_EVENTS,
+    CONF_ROUTE_ID,
+    CONF_ROUTE_NAME,
     CONF_MESSAGE_TYPES,
     DEFAULT_MESSAGE_TYPES,
     DOMAIN,
+    ENTRY_KIND_TRAVEL_TIME_ROUTE,
+    KNOWN_TRAVEL_TIME_ROUTE_STATUSES,
     TRAFIKVERKET_ICONS_BASE_URL,
 )
 from .coordinator import TrafikinfoCoordinator, TrafikinfoData
+from .travel_time_route import TravelTimeRouteCoordinator, TravelTimeRouteSnapshot
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -229,12 +237,50 @@ def _category_for_event(event: Any) -> str | None:
     return None
 
 
+def _minutes_from_seconds(value: float | None) -> float | None:
+    """Convert seconds to minutes with stable sensor precision."""
+    if value is None:
+        return None
+    return round(float(value) / 60, 1)
+
+
+def _datetime_attr(value: datetime | None) -> str | None:
+    """Serialize datetimes for state attributes."""
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return None
+
+
+def _normalize_route_status(value: str | None) -> str | None:
+    """Normalize TravelTimeRoute status values to lowercase strings."""
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    return normalized or None
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: TrafikinfoConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensor(s) from a config entry."""
+    if entry.runtime_data.entry_kind == ENTRY_KIND_TRAVEL_TIME_ROUTE:
+        coordinator = entry.runtime_data.travel_time_route_coordinator
+        if coordinator is None:
+            _LOGGER.error(
+                "Missing TravelTimeRoute coordinator for entry %s", entry.entry_id
+            )
+            return
+        async_add_entities(
+            [
+                TrafikinfoTravelTimeRouteTravelTimeSensor(entry, coordinator),
+                TrafikinfoTravelTimeRouteDelaySensor(entry, coordinator),
+                TrafikinfoTravelTimeRouteStatusSensor(entry, coordinator),
+            ]
+        )
+        return
+
     coordinator: TrafikinfoCoordinator = entry.runtime_data.coordinator
     enabled = entry.options.get(
         CONF_MESSAGE_TYPES, entry.data.get(CONF_MESSAGE_TYPES, DEFAULT_MESSAGE_TYPES)
@@ -251,6 +297,211 @@ async def async_setup_entry(
                 TrafikinfoMessageTypeSensor(entry, coordinator, description)
             )
     async_add_entities(entities)
+
+
+class TrafikinfoTravelTimeRouteEntity(
+    CoordinatorEntity[TravelTimeRouteCoordinator], SensorEntity
+):
+    """Base entity for TravelTimeRoute sensors."""
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        coordinator: TravelTimeRouteCoordinator,
+        *,
+        key: str,
+        translation_key: str,
+        icon: str,
+    ) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._route_id = str(entry.data.get(CONF_ROUTE_ID, coordinator.route_id)).strip()
+        route_name = entry.data.get(CONF_ROUTE_NAME) or entry.title or self._route_id
+        self._route_name = str(route_name).strip() or self._route_id
+        self._attr_unique_id = (
+            f"{entry.entry_id}_travel_time_route_{self._route_id}_{key}"
+        )
+        self._attr_translation_key = translation_key
+        self._attr_icon = icon
+        self._attr_suggested_object_id = (
+            f"{DOMAIN}_route_{slugify(self._route_id)}_{slugify(key)}"
+        )
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={
+                (
+                    DOMAIN,
+                    f"{self._entry.entry_id}_travel_time_route_{self._route_id}",
+                )
+            },
+            name=self._entry.title or self._route_name,
+            manufacturer="Trafikverket",
+            model="Road.TrafficInfo TravelTimeRoute",
+        )
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.last_update_success
+
+    @property
+    def _snapshot(self) -> TravelTimeRouteSnapshot | None:
+        return self.coordinator.data
+
+
+class TrafikinfoTravelTimeRouteTravelTimeSensor(TrafikinfoTravelTimeRouteEntity):
+    """Primary TravelTimeRoute sensor with the current travel time."""
+
+    _attr_native_unit_of_measurement = UnitOfTime.MINUTES
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 1
+    _unrecorded_attributes = frozenset({"geometry_wgs84"})
+
+    def __init__(
+        self, entry: ConfigEntry, coordinator: TravelTimeRouteCoordinator
+    ) -> None:
+        super().__init__(
+            entry,
+            coordinator,
+            key="travel_time",
+            translation_key="travel_time",
+            icon="mdi:timer-outline",
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        snapshot = self._snapshot
+        if snapshot is None:
+            return None
+        return _minutes_from_seconds(snapshot.travel_time_s)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        snapshot = self._snapshot
+        attrs: dict[str, Any] = {
+            "attribution": ATTRIBUTION,
+            "route_id": self._route_id,
+            "route_name": self._route_name,
+        }
+        if snapshot is None:
+            return attrs
+
+        attrs.update(
+            {
+                "county_no": snapshot.county_no,
+                "speed_kmh": round(snapshot.speed_kmh, 1)
+                if snapshot.speed_kmh is not None
+                else None,
+                "length_m": round(snapshot.length_m, 1)
+                if snapshot.length_m is not None
+                else None,
+                "free_flow_time_min": _minutes_from_seconds(
+                    snapshot.free_flow_travel_time_s
+                ),
+                "expected_free_flow_time_min": _minutes_from_seconds(
+                    snapshot.expected_free_flow_travel_time_s
+                ),
+                "measure_time": _datetime_attr(snapshot.measure_time),
+                "modified_time": _datetime_attr(snapshot.modified_time),
+                "geometry_wgs84": snapshot.geometry_wgs84,
+                "delay_min": _minutes_from_seconds(snapshot.delay_s),
+                "delay_percent": round(snapshot.delay_percent, 1)
+                if snapshot.delay_percent is not None
+                else None,
+                "traffic_status": _normalize_route_status(snapshot.traffic_status),
+            }
+        )
+        return attrs
+
+
+class TrafikinfoTravelTimeRouteDelaySensor(TrafikinfoTravelTimeRouteEntity):
+    """Sensor showing current delay versus free-flow travel time."""
+
+    _attr_native_unit_of_measurement = UnitOfTime.MINUTES
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 1
+
+    def __init__(
+        self, entry: ConfigEntry, coordinator: TravelTimeRouteCoordinator
+    ) -> None:
+        super().__init__(
+            entry,
+            coordinator,
+            key="delay",
+            translation_key="delay",
+            icon="mdi:clock-fast",
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        snapshot = self._snapshot
+        if snapshot is None:
+            return None
+        return _minutes_from_seconds(snapshot.delay_s)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        snapshot = self._snapshot
+        attrs: dict[str, Any] = {
+            "attribution": ATTRIBUTION,
+            "route_id": self._route_id,
+            "route_name": self._route_name,
+        }
+        if snapshot is None:
+            return attrs
+
+        attrs["free_flow_time_min"] = _minutes_from_seconds(
+            snapshot.free_flow_travel_time_s
+        )
+        attrs["traffic_status"] = _normalize_route_status(snapshot.traffic_status)
+        return attrs
+
+
+class TrafikinfoTravelTimeRouteStatusSensor(TrafikinfoTravelTimeRouteEntity):
+    """Enum sensor exposing the current traffic status for a route."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+
+    def __init__(
+        self, entry: ConfigEntry, coordinator: TravelTimeRouteCoordinator
+    ) -> None:
+        super().__init__(
+            entry,
+            coordinator,
+            key="traffic_status",
+            translation_key="traffic_status",
+            icon="mdi:traffic-light",
+        )
+
+    @property
+    def native_value(self) -> str | None:
+        snapshot = self._snapshot
+        if snapshot is None:
+            return None
+        return _normalize_route_status(snapshot.traffic_status)
+
+    @property
+    def options(self) -> list[str]:
+        options = list(KNOWN_TRAVEL_TIME_ROUTE_STATUSES)
+        current = self.native_value
+        if current and current not in options:
+            options.append(current)
+        return options
+
+    @property
+    def icon(self) -> str:
+        status = self.native_value
+        if status == "freeflow":
+            return "mdi:traffic-light-outline"
+        if status == "heavy":
+            return "mdi:traffic-light"
+        if status == "congested":
+            return "mdi:car-brake-alert"
+        return "mdi:traffic-light"
 
 
 class TrafikinfoMessageTypeSensor(
