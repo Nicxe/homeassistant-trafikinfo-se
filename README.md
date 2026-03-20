@@ -103,10 +103,7 @@ The route card can show:
 
 The map is optional and intended for the detailed card view.
 
-## TravelTimeRoute screenshot
-Add a screenshot of the route card here once one is available.
 
-![TravelTimeRoute card screenshot](docs/images/travel-time-route-card.png)
 
 ## Automation triggers (event bus)
 For sensors **Hinder** and **Olycka**, the integration emits one event per new or updated incident:
@@ -136,3 +133,6 @@ If you previously used `homeassistant-trafikinfo-se-card`, see [MIGRATION.md](./
 <img width="614" height="651" alt="trafikinfo example" src="https://github.com/user-attachments/assets/b48598dd-d136-4c77-851f-8e4dea6f86df" />
 
 <img width="1157" height="587" alt="trafikinfo alert card" src="https://github.com/user-attachments/assets/af609e0f-ca1e-4445-bb04-9cf681b1f0fb" />
+
+<img width="513" height="715" alt="CleanShot 2026-03-20 at 15 31 31" src="https://github.com/user-attachments/assets/c37c3eab-2413-44cb-90aa-5608152e7b20" />
+
