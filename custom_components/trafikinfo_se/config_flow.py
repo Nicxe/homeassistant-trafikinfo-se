@@ -242,9 +242,24 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._pending_entry_data = None
         return self.async_create_entry(title=title, data=data)
 
+    def _reuse_api_key_from_existing_entry(self) -> str | None:
+        """Return the API key from an existing config entry, if any."""
+        for entry in self.hass.config_entries.async_entries(DOMAIN):
+            key = str(entry.data.get(CONF_API_KEY, "")).strip()
+            if key:
+                return key
+        return None
+
     async def async_step_user(self, user_input: dict[str, Any] | None = None):
         """Handle the initial step."""
         errors: dict[str, str] = {}
+
+        # Reuse API key from an existing entry when available.
+        if user_input is None and self._api_key is None:
+            existing_key = self._reuse_api_key_from_existing_entry()
+            if existing_key:
+                self._api_key = existing_key
+                return await self.async_step_entry_kind()
 
         if user_input is not None:
             api_key = str(user_input.get(CONF_API_KEY, "")).strip()

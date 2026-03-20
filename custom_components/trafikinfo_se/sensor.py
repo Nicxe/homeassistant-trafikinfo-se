@@ -18,7 +18,7 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
@@ -339,9 +339,10 @@ class TrafikinfoTravelTimeRouteEntity(
                     f"{self._entry.entry_id}_travel_time_route_{self._route_id}",
                 )
             },
+            entry_type=DeviceEntryType.SERVICE,
             name=self._entry.title or self._route_name,
             manufacturer="Trafikverket",
-            model="Road.TrafficInfo TravelTimeRoute",
+            model="Restid",
         )
 
     @property
@@ -546,9 +547,10 @@ class TrafikinfoMessageTypeSensor(
     def device_info(self) -> DeviceInfo:
         return DeviceInfo(
             identifiers={(DOMAIN, self._entry.entry_id)},
+            entry_type=DeviceEntryType.SERVICE,
             name=self._entry.title,
             manufacturer="Trafikverket",
-            model="Road.TrafficInfo Situation",
+            model="Trafikhändelser",
         )
 
     def _get_dismissed_events(self) -> dict[str, dict]:
