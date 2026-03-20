@@ -10,6 +10,10 @@ if TYPE_CHECKING:
 
 DOMAIN = "trafikinfo_se"
 
+CONF_ENTRY_KIND = "entry_kind"
+ENTRY_KIND_INCIDENT = "incident"
+ENTRY_KIND_TRAVEL_TIME_ROUTE = "travel_time_route"
+
 # Frontend card resource handling
 CARD_FILENAME = "trafikinfo-se-alert-card.js"
 CARD_WWW_DIR = "www"
@@ -26,6 +30,10 @@ CONF_LOCATION = "location"
 CONF_LATITUDE = "latitude"
 CONF_LONGITUDE = "longitude"
 CONF_RADIUS_KM = "radius_km"
+CONF_ROUTE_ID = "route_id"
+CONF_ROUTE_NAME = "route_name"
+CONF_ROUTE_COUNTY_NO = "route_county_no"
+CONF_ROUTE_CATALOG_COUNTY = "route_catalog_county"
 
 # Sorting / selection
 CONF_SORT_MODE = "sort_mode"
@@ -52,6 +60,7 @@ FILTER_MODE_COUNTY = "county"
 FILTER_MODE_SWEDEN = "sweden"
 
 DEFAULT_SCAN_INTERVAL = timedelta(minutes=5)
+DEFAULT_TRAVEL_TIME_ROUTE_SCAN_INTERVAL = timedelta(minutes=1)
 DEFAULT_MAX_ITEMS = 25
 DEFAULT_RADIUS_KM = 25.0
 DEFAULT_FILTER_MODE = FILTER_MODE_COORDINATE
@@ -67,6 +76,7 @@ DEFAULT_MESSAGE_TYPES: list[str] = [
 ]
 
 SITUATION_SCHEMA_VERSION = "1.6"
+TRAVEL_TIME_ROUTE_SCHEMA_VERSION = "1.6"
 
 TRAFIKVERKET_DATACACHE_URL = "https://api.trafikinfo.trafikverket.se/v2/data.xml"
 TRAFIKVERKET_ICONS_BASE_URL = "https://api.trafikinfo.trafikverket.se/v1/icons"
@@ -92,6 +102,12 @@ ATTR_EVENT_KEY = "event_key"
 ATTR_SIGNATURE = "signature"
 
 ATTRIBUTION = "Data provided by Trafikverket (Trafikinfo)."
+
+KNOWN_TRAVEL_TIME_ROUTE_STATUSES: list[str] = [
+    "freeflow",
+    "heavy",
+    "congested",
+]
 
 
 def get_user_agent(hass: "HomeAssistant | None" = None) -> str:

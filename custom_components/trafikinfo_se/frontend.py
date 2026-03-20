@@ -136,8 +136,10 @@ async def _async_get_lovelace_resources(hass: HomeAssistant):
     if resources is None:
         return None
 
-    if hasattr(resources, "loaded") and not resources.loaded and hasattr(
-        resources, "async_load"
+    if (
+        hasattr(resources, "loaded")
+        and not resources.loaded
+        and hasattr(resources, "async_load")
     ):
         await resources.async_load()
         resources.loaded = True
@@ -185,10 +187,7 @@ async def _async_ensure_card_resource(hass: HomeAssistant) -> bool:
     target = local_item or legacy_item
 
     if target is not None:
-        if (
-            target.get(CONF_URL) == desired_url
-            and target.get(CONF_TYPE) == "module"
-        ):
+        if target.get(CONF_URL) == desired_url and target.get(CONF_TYPE) == "module":
             return True
 
         try:
