@@ -134,5 +134,6 @@ If you previously used `homeassistant-trafikinfo-se-card`, see [MIGRATION.md](./
 
 <img width="1157" height="587" alt="trafikinfo alert card" src="https://github.com/user-attachments/assets/af609e0f-ca1e-4445-bb04-9cf681b1f0fb" />
 
-<img width="513" height="715" alt="CleanShot 2026-03-20 at 15 31 31" src="https://github.com/user-attachments/assets/c37c3eab-2413-44cb-90aa-5608152e7b20" />
+<img width="578" height="784" alt="CleanShot 2026-03-20 at 15 32 33" src="https://github.com/user-attachments/assets/95d61f2b-42ce-45ca-bad1-29d844979ee5" />
+
 
