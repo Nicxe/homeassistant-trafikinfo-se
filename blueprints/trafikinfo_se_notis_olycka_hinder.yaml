@@ -20,8 +20,9 @@ blueprint:
     notify_additional_services:
       name: Extra notifieringstjänster (valfritt)
       description: >
-        Komma- eller semikolonseparerad lista av `notify.*`-tjänster, t.ex.
-        `notify.telegram`, `notify.notify`.
+        Komma- eller semikolonseparerad lista av notifieringar. Du kan ange både
+        direkta `notify.*`-tjänster och `notify`-entiteter, t.ex.
+        `notify.notify`, `notify.file`, `notify.telegram_bot_chat`.
       default: ""
       selector:
         text: {}
@@ -201,7 +202,7 @@ variables:
     {{ out }}
   road_text: >-
     {{ (road_name ~ ' ' ~ road_number ~ ' ' ~ (incident.location_descriptor | default('', true))) | lower }}
-  notify_services: >-
+  notify_service_targets: >-
     {% set ns = namespace(services=[]) %}
     {% for dev_id in (notify_devices_input | default([])) %}
       {% set name = device_attr(dev_id, 'name') %}
@@ -211,12 +212,32 @@ variables:
     {% endfor %}
     {% set s = (notify_additional_services_raw | default('') | string).replace(';', ',') %}
     {% for raw in s.split(',') %}
-      {% set svc = (raw | trim) %}
-      {% if svc %}
-        {% set ns.services = ns.services + [svc] %}
+      {% set target = (raw | trim) %}
+      {% if target and '.' in target %}
+        {% set parts = target.split('.', 1) %}
+        {% if has_service(parts[0], parts[1]) %}
+          {% set ns.services = ns.services + [target] %}
+        {% endif %}
+      {% elif target %}
+        {% set ns.services = ns.services + [target] %}
       {% endif %}
     {% endfor %}
     {{ ns.services }}
+  notify_entity_targets: >-
+    {% set ns = namespace(entities=[]) %}
+    {% set s = (notify_additional_services_raw | default('') | string).replace(';', ',') %}
+    {% for raw in s.split(',') %}
+      {% set target = (raw | trim) %}
+      {% if target.startswith('notify.') and '.' in target %}
+        {% set parts = target.split('.', 1) %}
+        {% if not has_service(parts[0], parts[1]) %}
+          {% set ns.entities = ns.entities + [target] %}
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.entities }}
+  notify_target_count: >-
+    {{ (notify_service_targets | default([], true) | count) + (notify_entity_targets | default([], true) | count) }}
   notification_title: >-
     {% set fields = title_fields_input | default([]) %}
     {% if fields is string %}{% set fields = [fields] %}{% endif %}
@@ -296,7 +317,7 @@ variables:
 condition:
   - condition: template
     value_template: >-
-      {{ (notify_services is sequence) and ((notify_services | length) > 0) }}
+      {{ notify_target_count | int(0) > 0 }}
   - condition: template
     value_template: >-
       {% set allowed = source_entities_input | default([]) %}
@@ -342,9 +363,17 @@ condition:
 
 action:
   - repeat:
-      for_each: "{{ notify_services }}"
+      for_each: "{{ notify_service_targets }}"
       sequence:
         - service: "{{ repeat.item }}"
           data:
+            title: "{{ notification_title }}"
+            message: "{{ notification_message }}"
+  - repeat:
+      for_each: "{{ notify_entity_targets }}"
+      sequence:
+        - service: notify.send_message
+          data:
+            entity_id: "{{ repeat.item }}"
             title: "{{ notification_title }}"
             message: "{{ notification_message }}"
