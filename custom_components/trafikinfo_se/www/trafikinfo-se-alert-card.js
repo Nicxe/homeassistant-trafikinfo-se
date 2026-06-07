@@ -39,6 +39,50 @@ const { LitElement, html, css } = await getLit();
 const LEAFLET_CSS_HREF = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
 const LEAFLET_JS_SRC = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
 const LEAFLET_ESM_URL = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet-src.esm.js';
+const OSM_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors';
+const MAP_TILE_REFERRER_POLICY = 'strict-origin-when-cross-origin';
+const DEFAULT_MAP_TILE_MAX_ZOOM = 18;
+const MAX_MAP_TILE_MAX_ZOOM = 22;
+
+const normalizeMapTileConfig = (config) => {
+  const tileUrl = String(config.map_tile_url || '').trim();
+  const attribution = String(config.map_tile_attribution || '').trim();
+  const rawMaxZoom = config.map_tile_max_zoom;
+  const maxZoom = rawMaxZoom === '' || rawMaxZoom === null || rawMaxZoom === undefined
+    ? DEFAULT_MAP_TILE_MAX_ZOOM
+    : Number(rawMaxZoom);
+
+  if (!Number.isInteger(maxZoom) || maxZoom < 0 || maxZoom > MAX_MAP_TILE_MAX_ZOOM) {
+    throw new Error(`Map tile max zoom must be an integer between 0 and ${MAX_MAP_TILE_MAX_ZOOM}.`);
+  }
+
+  if (tileUrl) {
+    if (!tileUrl.includes('{z}') || !tileUrl.includes('{x}') || !tileUrl.includes('{y}')) {
+      throw new Error('Custom map tile URL must include {z}, {x}, and {y}.');
+    }
+
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(tileUrl, window.location.href);
+    } catch (err) {
+      throw new Error('Custom map tile URL is invalid.', { cause: err });
+    }
+
+    const isSameOrigin = parsedUrl.origin === window.location.origin;
+    if (parsedUrl.protocol !== 'https:' && !isSameOrigin) {
+      throw new Error('Custom map tile URL must use HTTPS or be same-origin.');
+    }
+    if (!attribution) {
+      throw new Error('Custom map tile attribution is required.');
+    }
+  }
+
+  config.map_tile_url = tileUrl || null;
+  config.map_tile_attribution = tileUrl ? attribution : null;
+  config.map_tile_max_zoom = maxZoom;
+  return config;
+};
 
 class TrafikinfoSeAlertCard extends LitElement {
   static properties = {
@@ -254,8 +298,22 @@ class TrafikinfoSeAlertCard extends LitElement {
       transition: opacity 120ms ease;
     }
     .map-status.show { opacity: 1; }
-    /* Leaflet controls: allow zoom buttons, hide attribution to keep the card clean */
-    .geo-map .leaflet-control-attribution { display: none; }
+    /* Keep OSM attribution visible to satisfy tile usage policy. */
+    .geo-map .leaflet-control-attribution {
+      display: block;
+      max-width: calc(100% - 16px);
+      margin: 0;
+      padding: 2px 6px;
+      overflow-wrap: anywhere;
+      font-size: 10px;
+      line-height: 1.2;
+      color: var(--secondary-text-color);
+      background: color-mix(in srgb, var(--card-background-color) 94%, transparent);
+    }
+    .geo-map .leaflet-control-attribution a {
+      color: inherit;
+      text-decoration: underline;
+    }
     .geo-map .leaflet-control-zoom {
       box-shadow: none;
       border: 1px solid var(--divider-color);
@@ -339,6 +397,7 @@ class TrafikinfoSeAlertCard extends LitElement {
   constructor() {
     super();
     this._maps = new Map();
+    this._mapInitFrame = 0;
     this._pendingDismiss = new Set();
     this._dismissingKeys = new Set();
   }
@@ -348,7 +407,14 @@ class TrafikinfoSeAlertCard extends LitElement {
     // Rensa timers för att undvika minnesläckor
     clearTimeout(this._holdTimer);
     clearTimeout(this._tapTimer);
-    // Rensa Leaflet-kartinstanser
+    if (this._mapInitFrame) {
+      cancelAnimationFrame(this._mapInitFrame);
+      this._mapInitFrame = 0;
+    }
+    this._clearMaps();
+  }
+
+  _clearMaps() {
     for (const [, entry] of this._maps.entries()) {
       try {
         entry?.map?.remove?.();
@@ -362,8 +428,24 @@ class TrafikinfoSeAlertCard extends LitElement {
   setConfig(config) {
     if (!config?.entity) throw new Error('You must specify an entity.');
     const normalized = this._normalizeConfig(config);
+    const tileConfigChanged = this.config
+      && (
+        this.config.map_tile_url !== normalized.map_tile_url
+        || this.config.map_tile_attribution !== normalized.map_tile_attribution
+        || this.config.map_tile_max_zoom !== normalized.map_tile_max_zoom
+      );
+    if (tileConfigChanged) this._clearMaps();
     this.config = normalized;
     this._expanded = {};
+  }
+
+  _mapTileConfig() {
+    const customUrl = this.config?.map_tile_url;
+    return {
+      url: customUrl || OSM_TILE_URL,
+      attribution: customUrl ? this.config.map_tile_attribution : OSM_ATTRIBUTION,
+      maxZoom: this.config?.map_tile_max_zoom ?? DEFAULT_MAP_TILE_MAX_ZOOM,
+    };
   }
 
   getCardSize() {
@@ -1251,7 +1333,17 @@ class TrafikinfoSeAlertCard extends LitElement {
   }
 
   updated() {
-    this._maybeInitMaps();
+    this._scheduleMapInit(() => this._maybeInitMaps());
+  }
+
+  _scheduleMapInit(callback) {
+    if (this._mapInitFrame) {
+      cancelAnimationFrame(this._mapInitFrame);
+    }
+    this._mapInitFrame = requestAnimationFrame(() => {
+      this._mapInitFrame = 0;
+      callback();
+    });
   }
 
   _maybeInitMaps() {
@@ -1349,22 +1441,107 @@ class TrafikinfoSeAlertCard extends LitElement {
     }
   }
 
+  _mapStatusElement(statusId) {
+    return statusId ? this.renderRoot?.querySelector?.(`#${statusId}`) : null;
+  }
+
+  _setMapStatus(statusId, text) {
+    const statusEl = this._mapStatusElement(statusId);
+    if (!statusEl) return;
+    statusEl.textContent = text || '';
+    statusEl.classList.toggle('show', !!text);
+  }
+
+  _setMapStatusKey(statusId, key) {
+    this._setMapStatus(statusId, key ? this._t(key) : '');
+  }
+
+  _refreshMapStatus(entry) {
+    if (!entry?.statusId) return;
+    if (entry.tileState?.hasError) {
+      this._setMapStatusKey(entry.statusId, 'map_tiles_failed');
+      return;
+    }
+    if (entry.renderPending) {
+      this._setMapStatusKey(entry.statusId, 'map_rendering');
+      return;
+    }
+    if (entry.tileState?.loading && !entry.tileState?.loadedOnce) {
+      this._setMapStatusKey(entry.statusId, 'map_loading_tiles');
+      return;
+    }
+    this._setMapStatus(entry.statusId, '');
+  }
+
+  _attachTileLayerStatus(entry, tileLayer) {
+    tileLayer.on('loading', () => {
+      entry.tileState.loading = true;
+      entry.tileState.hasError = false;
+      this._refreshMapStatus(entry);
+    });
+    tileLayer.on('load', () => {
+      entry.tileState.loading = false;
+      entry.tileState.loadedOnce = true;
+      this._refreshMapStatus(entry);
+    });
+    tileLayer.on('tileerror', () => {
+      entry.tileState.loading = false;
+      entry.tileState.hasError = true;
+      this._refreshMapStatus(entry);
+    });
+  }
+
+  _createMapEntry(L, key, containerEl, statusId) {
+    const map = L.map(containerEl, {
+      zoomControl: this.config?.map_zoom_controls !== false,
+      attributionControl: true,
+      scrollWheelZoom: this.config?.map_scroll_wheel === true,
+      doubleClickZoom: true,
+      boxZoom: false,
+      keyboard: false,
+      touchZoom: true,
+      tap: false,
+    });
+    const entry = {
+      map,
+      layer: null,
+      tileLayer: null,
+      sig: '',
+      container: containerEl,
+      zoomKey: 'auto',
+      statusId,
+      renderPending: false,
+      tileState: {
+        loading: false,
+        hasError: false,
+        loadedOnce: false,
+      },
+    };
+    const tileConfig = this._mapTileConfig();
+    const tileLayer = L.tileLayer(tileConfig.url, {
+      maxZoom: tileConfig.maxZoom,
+      attribution: tileConfig.attribution,
+      referrerPolicy: MAP_TILE_REFERRER_POLICY,
+    });
+    this._attachTileLayerStatus(entry, tileLayer);
+    tileLayer.addTo(map);
+    entry.tileLayer = tileLayer;
+    this._maps.set(key, entry);
+    return entry;
+  }
+
   async _ensureLeafletAndRenderMap(key, containerEl, wkt, item) {
     this._ensureLeafletCssInShadowRoot();
-    const statusEl = this.renderRoot?.querySelector?.(`#trafikinfo-alert-map-status-${this._sanitizeDomId(key)}`);
-    if (statusEl) {
-      statusEl.textContent = this._t('map_loading_leaflet');
-      statusEl.classList.add('show');
+    const statusId = `trafikinfo-alert-map-status-${this._sanitizeDomId(key)}`;
+    if (!(window.L && window.L.map)) {
+      this._setMapStatusKey(statusId, 'map_loading_leaflet');
     }
     const L = await this._ensureLeaflet();
     if (!L) return;
 
     const pts = this._wktLonLatPoints(wkt);
     if (!pts.length) {
-      if (statusEl) {
-        statusEl.textContent = this._t('map_failed');
-        statusEl.classList.add('show');
-      }
+      this._setMapStatusKey(statusId, 'map_failed');
       return;
     }
     const sig = `${pts.length}|${String(pts[0]?.[0] || '')},${String(pts[0]?.[1] || '')}|${this._severityBucket(item)}`;
@@ -1379,30 +1556,14 @@ class TrafikinfoSeAlertCard extends LitElement {
 
     let entry = this._maps.get(key);
     if (!entry) {
-      const map = L.map(containerEl, {
-        zoomControl: this.config?.map_zoom_controls !== false,
-        attributionControl: false,
-        scrollWheelZoom: this.config?.map_scroll_wheel === true,
-        doubleClickZoom: true,
-        boxZoom: false,
-        keyboard: false,
-        touchZoom: true,
-        tap: false,
-      });
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 18,
-        attribution: '&copy; OpenStreetMap contributors',
-      }).addTo(map);
-      entry = { map, layer: null, sig: '', container: containerEl, zoomKey: 'auto' };
-      this._maps.set(key, entry);
+      entry = this._createMapEntry(L, key, containerEl, statusId);
     }
+    entry.statusId = statusId;
 
     let layerUpdated = false;
     if (entry.sig !== sig) {
-      if (statusEl) {
-        statusEl.textContent = this._t('map_rendering');
-        statusEl.classList.add('show');
-      }
+      entry.renderPending = true;
+      this._refreshMapStatus(entry);
       try { entry.layer?.remove?.(); } catch (e) {}
 
       const style = this._severityStyle(item);
@@ -1444,16 +1605,12 @@ class TrafikinfoSeAlertCard extends LitElement {
         } catch (e) {}
       }
       entry.zoomKey = zoomKey;
+      requestAnimationFrame(() => {
+        try { entry.map.invalidateSize(); } catch (e) {}
+      });
     }
-
-    requestAnimationFrame(() => {
-      try { entry.map.invalidateSize(); } catch (e) {}
-    });
-
-    if (statusEl) {
-      statusEl.classList.remove('show');
-      statusEl.textContent = '';
-    }
+    entry.renderPending = false;
+    this._refreshMapStatus(entry);
   }
 
   _ensureLeaflet() {
@@ -1601,8 +1758,10 @@ class TrafikinfoSeAlertCard extends LitElement {
         until_further_notice: 'Until further notice',
         map_loading: 'Loading map…',
         map_loading_leaflet: 'Loading map (Leaflet)…',
+        map_loading_tiles: 'Loading map tiles…',
         map_rendering: 'Rendering location…',
-        map_failed: 'Map failed to load (blocked by browser/HA CSP)',
+        map_failed: 'Map failed to load.',
+        map_tiles_failed: 'Map tiles could not be loaded. The tile server may have blocked the request or the browser may be omitting Referer.',
         dismiss: 'Dismiss',
         dismissed_count: '{count} dismissed',
         dismissed_count_one: '1 dismissed',
@@ -1647,8 +1806,10 @@ class TrafikinfoSeAlertCard extends LitElement {
         until_further_notice: 'Tills vidare',
         map_loading: 'Laddar karta…',
         map_loading_leaflet: 'Laddar karta (Leaflet)…',
+        map_loading_tiles: 'Laddar kartplattor…',
         map_rendering: 'Ritar plats…',
-        map_failed: 'Kartan kunde inte laddas (blockerad av webbläsare/HA CSP)',
+        map_failed: 'Kartan kunde inte laddas.',
+        map_tiles_failed: 'Kartplattorna kunde inte laddas. Kartservern kan ha blockerat förfrågan eller så skickar webbläsaren ingen referer.',
         dismiss: 'Dölj',
         dismissed_count: '{count} dolda',
         dismissed_count_one: '1 dold',
@@ -1676,11 +1837,14 @@ class TrafikinfoSeAlertCard extends LitElement {
     if (normalized.show_map === undefined) normalized.show_map = false;
     if (normalized.map_zoom_controls === undefined) normalized.map_zoom_controls = true;
     if (normalized.map_scroll_wheel === undefined) normalized.map_scroll_wheel = false;
+    normalizeMapTileConfig(normalized);
     if (normalized.map_zoom === '' || normalized.map_zoom === null || normalized.map_zoom === undefined) {
       normalized.map_zoom = null;
     } else {
       const zoomVal = Number(normalized.map_zoom);
-      normalized.map_zoom = Number.isFinite(zoomVal) ? Math.max(0, Math.min(18, zoomVal)) : null;
+      normalized.map_zoom = Number.isFinite(zoomVal)
+        ? Math.max(0, Math.min(normalized.map_tile_max_zoom, zoomVal))
+        : null;
     }
     if (normalized.max_items === undefined) normalized.max_items = 0;
     if (normalized.sort_order === undefined) normalized.sort_order = 'severity_then_time';
@@ -1796,6 +1960,9 @@ class TrafikinfoSeAlertCard extends LitElement {
       map_zoom: null,
       map_zoom_controls: true,
       map_scroll_wheel: false,
+      map_tile_url: '',
+      map_tile_attribution: '',
+      map_tile_max_zoom: DEFAULT_MAP_TILE_MAX_ZOOM,
       max_items: 0,
       sort_order: 'severity_then_time',
       date_format: 'locale',
@@ -1964,7 +2131,15 @@ class TrafikinfoSeRouteCard extends TrafikinfoSeAlertCard {
     const hasSingle = Boolean(config?.entity);
     const hasMultiple = Array.isArray(config?.entities) && config.entities.length > 0;
     if (!hasSingle && !hasMultiple) throw new Error('You must specify one or more entities.');
-    this.config = this._normalizeRouteConfig(config);
+    const normalized = this._normalizeRouteConfig(config);
+    const tileConfigChanged = this.config
+      && (
+        this.config.map_tile_url !== normalized.map_tile_url
+        || this.config.map_tile_attribution !== normalized.map_tile_attribution
+        || this.config.map_tile_max_zoom !== normalized.map_tile_max_zoom
+      );
+    if (tileConfigChanged) this._clearMaps();
+    this.config = normalized;
   }
 
   static getConfigElement() {
@@ -1993,6 +2168,9 @@ class TrafikinfoSeRouteCard extends TrafikinfoSeAlertCard {
       map_zoom: null,
       map_zoom_controls: true,
       map_scroll_wheel: false,
+      map_tile_url: '',
+      map_tile_attribution: '',
+      map_tile_max_zoom: DEFAULT_MAP_TILE_MAX_ZOOM,
     };
   }
 
@@ -2033,7 +2211,7 @@ class TrafikinfoSeRouteCard extends TrafikinfoSeAlertCard {
   }
 
   updated() {
-    this._maybeInitRouteMap();
+    this._scheduleMapInit(() => this._maybeInitRouteMap());
   }
 
   render() {
@@ -2106,11 +2284,14 @@ class TrafikinfoSeRouteCard extends TrafikinfoSeAlertCard {
     if (normalized.show_map === undefined) normalized.show_map = false;
     if (normalized.map_zoom_controls === undefined) normalized.map_zoom_controls = true;
     if (normalized.map_scroll_wheel === undefined) normalized.map_scroll_wheel = false;
+    normalizeMapTileConfig(normalized);
     if (normalized.map_zoom === '' || normalized.map_zoom === null || normalized.map_zoom === undefined) {
       normalized.map_zoom = null;
     } else {
       const zoomVal = Number(normalized.map_zoom);
-      normalized.map_zoom = Number.isFinite(zoomVal) ? Math.max(0, Math.min(18, zoomVal)) : null;
+      normalized.map_zoom = Number.isFinite(zoomVal)
+        ? Math.max(0, Math.min(normalized.map_tile_max_zoom, zoomVal))
+        : null;
     }
     if (!['auto', 'minutes', 'hours_minutes'].includes(String(normalized.time_format))) {
       normalized.time_format = 'auto';
@@ -2339,10 +2520,9 @@ class TrafikinfoSeRouteCard extends TrafikinfoSeAlertCard {
 
   async _ensureLeafletAndRenderRouteCollection(key, containerEl, routes) {
     this._ensureLeafletCssInShadowRoot();
-    const statusEl = this.renderRoot?.querySelector?.(`#trafikinfo-route-map-status-${this._sanitizeDomId(key)}`);
-    if (statusEl) {
-      statusEl.textContent = this._t('map_loading_leaflet');
-      statusEl.classList.add('show');
+    const statusId = `trafikinfo-route-map-status-${this._sanitizeDomId(key)}`;
+    if (!(window.L && window.L.map)) {
+      this._setMapStatusKey(statusId, 'map_loading_leaflet');
     }
     const L = await this._ensureLeaflet();
     if (!L) return;
@@ -2355,10 +2535,7 @@ class TrafikinfoSeRouteCard extends TrafikinfoSeAlertCard {
       .filter((route) => route.points.length > 0);
 
     if (!routeSegments.length) {
-      if (statusEl) {
-        statusEl.textContent = this._t('map_failed');
-        statusEl.classList.add('show');
-      }
+      this._setMapStatusKey(statusId, 'map_failed');
       return;
     }
 
@@ -2376,30 +2553,14 @@ class TrafikinfoSeRouteCard extends TrafikinfoSeAlertCard {
 
     let entry = this._maps.get(key);
     if (!entry) {
-      const map = L.map(containerEl, {
-        zoomControl: this.config?.map_zoom_controls !== false,
-        attributionControl: false,
-        scrollWheelZoom: this.config?.map_scroll_wheel === true,
-        doubleClickZoom: true,
-        boxZoom: false,
-        keyboard: false,
-        touchZoom: true,
-        tap: false,
-      });
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 18,
-        attribution: '&copy; OpenStreetMap contributors',
-      }).addTo(map);
-      entry = { map, layer: null, sig: '', container: containerEl, zoomKey: 'auto' };
-      this._maps.set(key, entry);
+      entry = this._createMapEntry(L, key, containerEl, statusId);
     }
+    entry.statusId = statusId;
 
     let layerUpdated = false;
     if (entry.sig !== sig) {
-      if (statusEl) {
-        statusEl.textContent = this._t('map_rendering');
-        statusEl.classList.add('show');
-      }
+      entry.renderPending = true;
+      this._refreshMapStatus(entry);
       try { entry.layer?.remove?.(); } catch (e) {}
 
       const layers = routeSegments.map((route) => {
@@ -2431,16 +2592,12 @@ class TrafikinfoSeRouteCard extends TrafikinfoSeAlertCard {
         }
       } catch (e) {}
       entry.zoomKey = zoomKey;
+      requestAnimationFrame(() => {
+        try { entry.map.invalidateSize(); } catch (e) {}
+      });
     }
-
-    requestAnimationFrame(() => {
-      try { entry.map.invalidateSize(); } catch (e) {}
-    });
-
-    if (statusEl) {
-      statusEl.classList.remove('show');
-      statusEl.textContent = '';
-    }
+    entry.renderPending = false;
+    this._refreshMapStatus(entry);
   }
 }
 
@@ -2554,6 +2711,9 @@ class TrafikinfoSeAlertCardEditor extends LitElement {
         { name: 'map_zoom', label: 'Map zoom level (0 = world, 18 = street)', selector: { number: { min: 0, max: 18, mode: 'box' } } },
         { name: 'map_zoom_controls', label: 'Map zoom controls (+/−)', selector: { boolean: {} } },
         { name: 'map_scroll_wheel', label: 'Map scroll wheel zoom', selector: { boolean: {} } },
+        { name: 'map_tile_url', label: 'Custom map tile URL', selector: { text: {} } },
+        { name: 'map_tile_attribution', label: 'Custom map tile attribution', selector: { text: {} } },
+        { name: 'map_tile_max_zoom', label: 'Map tile maximum zoom', selector: { number: { min: 0, max: MAX_MAP_TILE_MAX_ZOOM, mode: 'box' } } },
         { name: 'max_items', label: 'Max items', selector: { number: { min: 0, mode: 'box' } } },
         {
           name: 'sort_order', label: 'Sort order',
@@ -2595,6 +2755,9 @@ class TrafikinfoSeAlertCardEditor extends LitElement {
       map_zoom: this._config.map_zoom !== undefined && this._config.map_zoom !== null ? this._config.map_zoom : undefined,
       map_zoom_controls: this._config.map_zoom_controls !== undefined ? this._config.map_zoom_controls : true,
       map_scroll_wheel: this._config.map_scroll_wheel !== undefined ? this._config.map_scroll_wheel : false,
+      map_tile_url: this._config.map_tile_url || '',
+      map_tile_attribution: this._config.map_tile_attribution || '',
+      map_tile_max_zoom: this._config.map_tile_max_zoom ?? DEFAULT_MAP_TILE_MAX_ZOOM,
       use_details: this._config.use_details !== undefined ? this._config.use_details : true,
       max_items: this._config.max_items ?? 0,
       sort_order: this._config.sort_order || 'severity_then_time',
@@ -2827,6 +2990,9 @@ class TrafikinfoSeAlertCardEditor extends LitElement {
       map_zoom: 'Map zoom level (0 = world, 18 = street)',
       map_zoom_controls: 'Map zoom controls (+/−)',
       map_scroll_wheel: 'Map scroll wheel zoom',
+      map_tile_url: 'Custom map tile URL',
+      map_tile_attribution: 'Custom map tile attribution',
+      map_tile_max_zoom: 'Map tile maximum zoom',
       use_details: 'Use details (collapse/expand)',
       max_items: 'Max items',
       sort_order: 'Sort order',
@@ -2887,6 +3053,9 @@ class TrafikinfoSeRouteCardEditor extends LitElement {
       { name: 'map_zoom', label: 'Map zoom level (0 = world, 18 = street)', selector: { number: { min: 0, max: 18, mode: 'box' } } },
       { name: 'map_zoom_controls', label: 'Map zoom controls (+/−)', selector: { boolean: {} } },
       { name: 'map_scroll_wheel', label: 'Map scroll wheel zoom', selector: { boolean: {} } },
+      { name: 'map_tile_url', label: 'Custom map tile URL', selector: { text: {} } },
+      { name: 'map_tile_attribution', label: 'Custom map tile attribution', selector: { text: {} } },
+      { name: 'map_tile_max_zoom', label: 'Map tile maximum zoom', selector: { number: { min: 0, max: MAX_MAP_TILE_MAX_ZOOM, mode: 'box' } } },
     ];
 
     const data = {
@@ -2904,6 +3073,9 @@ class TrafikinfoSeRouteCardEditor extends LitElement {
       map_zoom: this._config.map_zoom !== undefined && this._config.map_zoom !== null ? this._config.map_zoom : undefined,
       map_zoom_controls: this._config.map_zoom_controls !== undefined ? this._config.map_zoom_controls : true,
       map_scroll_wheel: this._config.map_scroll_wheel !== undefined ? this._config.map_scroll_wheel : false,
+      map_tile_url: this._config.map_tile_url || '',
+      map_tile_attribution: this._config.map_tile_attribution || '',
+      map_tile_max_zoom: this._config.map_tile_max_zoom ?? DEFAULT_MAP_TILE_MAX_ZOOM,
     };
 
     return html`
