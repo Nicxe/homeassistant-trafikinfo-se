@@ -47,6 +47,15 @@ You can also use the manual card types:
 - `custom:trafikinfo-se-route-card`
 - `custom:trafikinfo-se-viktig-trafikinformation-card`
 
+### Map configuration
+Maps in the incident and route cards use OpenStreetMap by default and include the required attribution. The same optional tile-provider settings are available in both card editors:
+
+- **Custom map tile URL**: HTTPS or same-origin URL containing `{z}`, `{x}`, and `{y}`
+- **Custom map tile attribution**: attribution required by the selected provider
+- **Map tile maximum zoom**: highest supported zoom level, from `0` to `22` (default `18`)
+
+Both a custom tile URL and its attribution must be provided together. Leave these fields empty to use the default OpenStreetMap tiles. A custom provider can be useful when you need different map styling, coverage, availability guarantees, or a self-hosted tile service.
+
 ### Manual fallback (if needed)
 Normally no manual Lovelace resource setup is required.
 
@@ -135,5 +144,4 @@ If you previously used `homeassistant-trafikinfo-se-card`, see [MIGRATION.md](./
 <img width="1157" height="587" alt="trafikinfo alert card" src="https://github.com/user-attachments/assets/af609e0f-ca1e-4445-bb04-9cf681b1f0fb" />
 
 <img width="578" height="784" alt="CleanShot 2026-03-20 at 15 32 33" src="https://github.com/user-attachments/assets/95d61f2b-42ce-45ca-bad1-29d844979ee5" />
-
 
