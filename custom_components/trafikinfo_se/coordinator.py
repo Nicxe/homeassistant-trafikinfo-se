@@ -1062,10 +1062,8 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
             f"{DOMAIN}_icon_cache",
         )
         _LOGGER.debug(
-            "Filter: mode=%s center=(%.5f,%.5f) radius_km=%.1f counties=%s events_before=%s events_after=%s",
+            "Filter: mode=%s radius_km=%.1f counties=%s events_before=%s events_after=%s",
             self._filter_mode,
-            self._latitude,
-            self._longitude,
             self._radius_km,
             sorted(self._counties),
             len(data.events),
