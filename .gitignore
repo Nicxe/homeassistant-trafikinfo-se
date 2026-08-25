@@ -7,3 +7,4 @@ __pycache__/
 *.py[cod]
 /custom_components/trafikinfo_se/tests/*
 !/custom_components/trafikinfo_se/tests/test_frontend_resources.py
+!/custom_components/trafikinfo_se/tests/test_road_filter.py

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 import logging
@@ -15,7 +14,6 @@ import xml.etree.ElementTree as ET
 
 import aiohttp
 import async_timeout
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import aiohttp_client
@@ -27,31 +25,31 @@ from .const import (
     CONF_COUNTIES,
     CONF_FILTER_MODE,
     CONF_FILTER_ROADS,
-    CONF_ROAD_FILTER_SAFETY_BYPASS,
     CONF_LATITUDE,
     CONF_LONGITUDE,
     CONF_MAX_ITEMS,
     CONF_RADIUS_KM,
+    CONF_ROAD_FILTER_SAFETY_BYPASS,
     CONF_SORT_LOCATION,
     CONF_SORT_MODE,
     COUNTY_ALL,
-    DEFAULT_RADIUS_KM,
     DEFAULT_FILTER_MODE,
     DEFAULT_MAX_ITEMS,
+    DEFAULT_RADIUS_KM,
     DEFAULT_ROAD_FILTER_SAFETY_BYPASS,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SORT_MODE,
     DOMAIN,
     FILTER_MODE_COORDINATE,
     FILTER_MODE_COUNTY,
+    ICON_CACHE_DIR,
     SITUATION_SCHEMA_VERSION,
     SORT_MODE_NEAREST,
     SORT_MODE_NEWEST,
     SORT_MODE_RELEVANCE,
     TRAFIKVERKET_DATACACHE_URL,
-    TRAFIKVERKET_ICONS_BASE_URL,
     TRAFIKVERKET_ICON_V2_URL_PREFIX,
-    ICON_CACHE_DIR,
+    TRAFIKVERKET_ICONS_BASE_URL,
     get_user_agent,
 )
 
@@ -678,14 +676,27 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
     def _road_filter_match(self, event: TrafikinfoEvent, tokens: list[str]) -> bool:
         if not tokens:
             return True
-        road_text = f"{event.road_name or ''} {event.road_number or ''}".lower()
-        road_no = (event.road_number or "").strip().lower()
-        for t in tokens:
-            if not t:
+        road_name = re.sub(r"\s+", " ", (event.road_name or "").lower()).strip()
+        road_no = self._normalize_road_filter_token(event.road_number or "")
+        for token in tokens:
+            if not token:
                 continue
-            if road_no and t == road_no:
-                return True
-            if t in road_text:
+
+            if token.endswith("*") and token.count("*") == 1:
+                prefix = token[:-1].strip()
+                if prefix and road_no.startswith(prefix):
+                    return True
+                continue
+
+            if "*" in token:
+                continue
+
+            if any(char.isdigit() for char in token):
+                if road_no and token == road_no:
+                    return True
+                continue
+
+            if token in road_name:
                 return True
         return False
 
@@ -1038,7 +1049,7 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
                         )
         except TrafikinfoError as err:
             raise UpdateFailed(str(err)) from err
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise UpdateFailed(
                 "Request timeout - Trafikverket API not responding"
             ) from None
