@@ -51,6 +51,7 @@
           "road_filter_safety_bypass": "Kringgå vägfilter för säkerhetsrelaterade meddelanden"
         },
         "data_description": {
+          "filter_roads": "Separera värden med kommatecken eller semikolon. Vägnummer matchas exakt; lägg till * sist för ett nummerprefix (till exempel 71*). Vägnamn matchas utan hänsyn till stora och små bokstäver.",
           "road_filter_safety_bypass": "Om aktiverat visas händelser markerade som säkerhetsrelaterade av Trafikverket oavsett vägfilter. 'Viktig trafikinformation' visas alltid oavsett den här inställningen. Inaktiverat innebär att vägfiltret gäller strikt för alla händelsetyper, inklusive Trafikmeddelande."
         }
       },
@@ -68,6 +69,7 @@
           "road_filter_safety_bypass": "Kringgå vägfilter för säkerhetsrelaterade meddelanden"
         },
         "data_description": {
+          "filter_roads": "Separera värden med kommatecken eller semikolon. Vägnummer matchas exakt; lägg till * sist för ett nummerprefix (till exempel 71*). Vägnamn matchas utan hänsyn till stora och små bokstäver.",
           "road_filter_safety_bypass": "Om aktiverat visas händelser markerade som säkerhetsrelaterade av Trafikverket oavsett vägfilter. 'Viktig trafikinformation' visas alltid oavsett den här inställningen. Inaktiverat innebär att vägfiltret gäller strikt för alla händelsetyper, inklusive Trafikmeddelande."
         }
       },
@@ -111,6 +113,7 @@
           "road_filter_safety_bypass": "Kringgå vägfilter för säkerhetsrelaterade meddelanden"
         },
         "data_description": {
+          "filter_roads": "Separera värden med kommatecken eller semikolon. Vägnummer matchas exakt; lägg till * sist för ett nummerprefix (till exempel 71*). Vägnamn matchas utan hänsyn till stora och små bokstäver.",
           "road_filter_safety_bypass": "Om aktiverat visas händelser markerade som säkerhetsrelaterade av Trafikverket oavsett vägfilter. 'Viktig trafikinformation' visas alltid oavsett den här inställningen. Inaktiverat innebär att vägfiltret gäller strikt för alla händelsetyper, inklusive Trafikmeddelande."
         }
       },
@@ -128,6 +131,7 @@
           "road_filter_safety_bypass": "Kringgå vägfilter för säkerhetsrelaterade meddelanden"
         },
         "data_description": {
+          "filter_roads": "Separera värden med kommatecken eller semikolon. Vägnummer matchas exakt; lägg till * sist för ett nummerprefix (till exempel 71*). Vägnamn matchas utan hänsyn till stora och små bokstäver.",
           "road_filter_safety_bypass": "Om aktiverat visas händelser markerade som säkerhetsrelaterade av Trafikverket oavsett vägfilter. 'Viktig trafikinformation' visas alltid oavsett den här inställningen. Inaktiverat innebär att vägfiltret gäller strikt för alla händelsetyper, inklusive Trafikmeddelande."
         }
       }
@@ -164,6 +168,7 @@
           "road_filter_safety_bypass": "Kringgå vägfilter för säkerhetsrelaterade meddelanden"
         },
         "data_description": {
+          "filter_roads": "Separera värden med kommatecken eller semikolon. Vägnummer matchas exakt; lägg till * sist för ett nummerprefix (till exempel 71*). Vägnamn matchas utan hänsyn till stora och små bokstäver.",
           "road_filter_safety_bypass": "Om aktiverat visas händelser markerade som säkerhetsrelaterade av Trafikverket oavsett vägfilter. 'Viktig trafikinformation' visas alltid oavsett den här inställningen. Inaktiverat innebär att vägfiltret gäller strikt för alla händelsetyper, inklusive Trafikmeddelande."
         }
       },
@@ -181,6 +186,7 @@
           "road_filter_safety_bypass": "Kringgå vägfilter för säkerhetsrelaterade meddelanden"
         },
         "data_description": {
+          "filter_roads": "Separera värden med kommatecken eller semikolon. Vägnummer matchas exakt; lägg till * sist för ett nummerprefix (till exempel 71*). Vägnamn matchas utan hänsyn till stora och små bokstäver.",
           "road_filter_safety_bypass": "Om aktiverat visas händelser markerade som säkerhetsrelaterade av Trafikverket oavsett vägfilter. 'Viktig trafikinformation' visas alltid oavsett den här inställningen. Inaktiverat innebär att vägfiltret gäller strikt för alla händelsetyper, inklusive Trafikmeddelande."
         }
       },

@@ -250,3 +250,14 @@ def test_bundled_card_editors_expose_tile_provider_fields() -> None:
     assert card_text.count("name: 'map_tile_url'") == 2
     assert card_text.count("name: 'map_tile_attribution'") == 2
     assert card_text.count("name: 'map_tile_max_zoom'") == 2
+
+
+def test_bundled_card_editor_documents_road_filter_matching() -> None:
+    card_path = Path(frontend._card_file_path())
+    card_text = card_path.read_text(encoding="utf-8")
+
+    label = (
+        "Filter roads (exact numbers/names; 71* for prefixes; "
+        "comma/semicolon-separated)"
+    )
+    assert card_text.count(label) == 2

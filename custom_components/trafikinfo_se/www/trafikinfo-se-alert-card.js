@@ -511,9 +511,7 @@ class TrafikinfoSeAlertCard extends LitElement {
       const sev = this._severityBucket(e);
       // Important traffic info typically has no severity; ignore severity filter there
       const sevOk = preset === 'important' || filterSev.length === 0 || filterSev.includes(sev);
-      const roadText = `${e.road_name || ''} ${e.road_number || ''}`.toLowerCase();
-      const roadNo = String(e.road_number || '').trim().toLowerCase();
-      const roadOk = filterRoads.length === 0 || filterRoads.some((x) => (roadText.includes(x) || (roadNo && x === roadNo)));
+      const roadOk = filterRoads.length === 0 || this._roadFilterMatch(e, filterRoads);
       return sevOk && roadOk;
     });
 
@@ -574,6 +572,25 @@ class TrafikinfoSeAlertCard extends LitElement {
     // Normalize whitespace
     s = s.replace(/\s+/g, ' ').trim();
     return s;
+  }
+
+  _roadFilterMatch(item, tokens) {
+    const roadNo = this._normalizeRoadFilterToken(item?.road_number);
+    const roadName = String(item?.road_name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+    return tokens.some((token) => {
+      if (!token) return false;
+
+      const wildcardCount = (token.match(/\*/g) || []).length;
+      if (token.endsWith('*') && wildcardCount === 1) {
+        const prefix = token.slice(0, -1).trim();
+        return Boolean(prefix && roadNo.startsWith(prefix));
+      }
+
+      if (token.includes('*')) return false;
+      if (/\d/.test(token)) return Boolean(roadNo && token === roadNo);
+      return roadName.includes(token);
+    });
   }
 
   _severityRank(item) {
@@ -2728,7 +2745,7 @@ class TrafikinfoSeAlertCardEditor extends LitElement {
           { value: 'road', label: 'By road' },
           { value: 'severity', label: 'By severity' },
         ] } } },
-        { name: 'filter_roads', label: 'Filter roads (comma/semicolon-separated)', selector: { text: {} } },
+        { name: 'filter_roads', label: 'Filter roads (exact numbers/names; 71* for prefixes; comma/semicolon-separated)', selector: { text: {} } },
       );
     }
     if (preset !== 'important') {
@@ -2999,7 +3016,7 @@ class TrafikinfoSeAlertCardEditor extends LitElement {
       date_format: 'Date format',
       group_by: 'Group by',
       filter_severities: 'Filter severities',
-      filter_roads: 'Filter roads (comma/semicolon-separated)',
+      filter_roads: 'Filter roads (exact numbers/names; 71* for prefixes; comma/semicolon-separated)',
       tap_action: 'Tap action',
       double_tap_action: 'Double tap action',
       hold_action: 'Hold action',
