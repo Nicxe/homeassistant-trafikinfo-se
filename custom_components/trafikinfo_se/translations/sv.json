@@ -17,7 +17,7 @@
       },
       "entry_kind": {
         "title": "Trafikinfo SE",
-        "description": "Välj om den här posten ska följa trafikhändelser, aktuellt väglag eller restid för en fördefinierad Trafikverket-rutt.",
+        "description": "Välj om den här posten ska följa trafikhändelser, aktuellt väglag, trafikflöde eller restid för en fördefinierad Trafikverket-rutt.",
         "data": {
           "entry_kind": "Typ av post"
         }
@@ -27,6 +27,37 @@
         "description": "Välj hur du vill filtrera trafikinformation.",
         "data": {
           "filter_mode": "Filterläge"
+        }
+      },
+      "traffic_flow_scope": {
+        "title": "Trafikinfo SE",
+        "description": "Välj hur du vill hitta en mätplats för trafikflöde från Trafikverket.",
+        "data": {
+          "filter_mode": "Sökmetod"
+        }
+      },
+      "traffic_flow_coordinate": {
+        "title": "Trafikinfo SE",
+        "description": "Hitta mätplatser för trafikflöde nära en position. API-sökningen begränsas till den valda radien.",
+        "data": {
+          "location": "Sökposition",
+          "radius_km": "Radie (km)"
+        }
+      },
+      "traffic_flow_county": {
+        "title": "Trafikinfo SE",
+        "description": "Hitta mätplatser för trafikflöde i ett län och sortera dem efter avstånd från en referensposition.",
+        "data": {
+          "traffic_flow_county": "Län",
+          "sort_location": "Referensposition"
+        }
+      },
+      "traffic_flow_site": {
+        "title": "Trafikinfo SE",
+        "description": "Välj en mätplats och riktning. Närliggande körfältsdetektorer på samma plats kombineras.",
+        "data": {
+          "traffic_flow_site_ids": "Mätplats",
+          "name": "Namn"
         }
       },
       "travel_time_route_scope": {
@@ -91,6 +122,37 @@
           "filter_mode": "Filterläge"
         }
       },
+      "reconfigure_traffic_flow_scope": {
+        "title": "Trafikinfo SE",
+        "description": "Välj hur du vill hitta en ersättande mätplats för trafikflöde.",
+        "data": {
+          "filter_mode": "Sökmetod"
+        }
+      },
+      "reconfigure_traffic_flow_coordinate": {
+        "title": "Trafikinfo SE",
+        "description": "Hitta ersättande mätplatser för trafikflöde nära en position.",
+        "data": {
+          "location": "Sökposition",
+          "radius_km": "Radie (km)"
+        }
+      },
+      "reconfigure_traffic_flow_county": {
+        "title": "Trafikinfo SE",
+        "description": "Hitta ersättande mätplatser för trafikflöde i ett län.",
+        "data": {
+          "traffic_flow_county": "Län",
+          "sort_location": "Referensposition"
+        }
+      },
+      "reconfigure_traffic_flow_site": {
+        "title": "Trafikinfo SE",
+        "description": "Välj en ersättande mätplats och riktning och byt vid behov namn på posten.",
+        "data": {
+          "traffic_flow_site_ids": "Mätplats",
+          "name": "Namn"
+        }
+      },
       "reconfigure_travel_time_route_scope": {
         "title": "Trafikinfo SE",
         "description": "Välj vilken del av Trafikverkets fördefinierade ruttkatalog du vill bläddra i.",
@@ -147,7 +209,9 @@
       "cannot_connect": "Kunde inte ansluta.",
       "invalid_auth": "Ogiltig API-nyckel.",
       "invalid_route": "Välj en giltig rutt.",
+      "invalid_traffic_flow_site": "Välj en giltig mätplats för trafikflöde.",
       "missing_counties": "Välj minst ett län (eller 'Hela Sverige').",
+      "no_traffic_flow_sites": "Inga mätplatser för trafikflöde hittades i det valda sökområdet.",
       "no_routes_found": "Inga rutter hittades för det valda katalogområdet.",
       "unknown": "Oväntat fel."
     },
@@ -206,6 +270,13 @@
         "data": {
           "name": "Namn"
         }
+      },
+      "traffic_flow": {
+        "title": "Trafikinfo SE alternativ",
+        "description": "Byt namn på trafikflödesposten. Använd omkonfigurera om du vill välja en annan mätplats.",
+        "data": {
+          "name": "Namn"
+        }
       }
     },
     "error": {
@@ -254,6 +325,23 @@
       },
       "hazardous_road_sections": {
         "name": "Avvikande vägsträckor"
+      },
+      "traffic_flow_rate": {
+        "name": "Trafikflöde"
+      },
+      "traffic_flow_speed": {
+        "name": "Medelhastighet"
+      },
+      "traffic_flow_quality": {
+        "name": "Datakvalitet",
+        "state": {
+          "no_data": "Ingen data",
+          "good": "Bra",
+          "degraded": "Nedsatt",
+          "bad": "Dålig",
+          "stale": "För gammal",
+          "unknown": "Okänd"
+        }
       }
     }
   }

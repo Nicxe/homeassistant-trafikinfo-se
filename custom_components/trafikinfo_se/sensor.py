@@ -16,7 +16,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfTime
+from homeassistant.const import UnitOfSpeed, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -34,6 +34,7 @@ from .const import (
     DEFAULT_MESSAGE_TYPES,
     DOMAIN,
     ENTRY_KIND_ROAD_CONDITION,
+    ENTRY_KIND_TRAFFIC_FLOW,
     ENTRY_KIND_TRAVEL_TIME_ROUTE,
     KNOWN_TRAVEL_TIME_ROUTE_STATUSES,
     TRAFIKVERKET_ICONS_BASE_URL,
@@ -48,6 +49,15 @@ from .road_condition import (
     RoadCondition,
     RoadConditionCoordinator,
     RoadConditionSnapshot,
+)
+from .traffic_flow import (
+    TRAFFIC_FLOW_QUALITY_BAD,
+    TRAFFIC_FLOW_QUALITY_DEGRADED,
+    TRAFFIC_FLOW_QUALITY_GOOD,
+    TRAFFIC_FLOW_QUALITY_STALE,
+    TRAFFIC_FLOW_QUALITY_STATES,
+    TrafficFlowCoordinator,
+    TrafficFlowSnapshot,
 )
 from .travel_time_route import TravelTimeRouteCoordinator, TravelTimeRouteSnapshot
 
@@ -291,6 +301,22 @@ async def async_setup_entry(
         )
         return
 
+    if entry.runtime_data.entry_kind == ENTRY_KIND_TRAFFIC_FLOW:
+        coordinator = entry.runtime_data.traffic_flow_coordinator
+        if coordinator is None:
+            _LOGGER.error(
+                "Missing TrafficFlow coordinator for entry %s", entry.entry_id
+            )
+            return
+        async_add_entities(
+            [
+                TrafikinfoTrafficFlowRateSensor(entry, coordinator),
+                TrafikinfoTrafficFlowSpeedSensor(entry, coordinator),
+                TrafikinfoTrafficFlowQualitySensor(entry, coordinator),
+            ]
+        )
+        return
+
     if entry.runtime_data.entry_kind == ENTRY_KIND_TRAVEL_TIME_ROUTE:
         coordinator = entry.runtime_data.travel_time_route_coordinator
         if coordinator is None:
@@ -521,6 +547,171 @@ class TrafikinfoRoadConditionHazardCountSensor(TrafikinfoRoadConditionEntity):
             if snapshot
             else None,
         }
+
+
+class TrafikinfoTrafficFlowEntity(
+    CoordinatorEntity[TrafficFlowCoordinator], SensorEntity
+):
+    """Base entity for one selected Trafikverket TrafficFlow site."""
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        coordinator: TrafficFlowCoordinator,
+        *,
+        key: str,
+        translation_key: str,
+        icon: str,
+    ) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_traffic_flow_{key}"
+        self._attr_translation_key = translation_key
+        self._attr_icon = icon
+        self._attr_suggested_object_id = f"{DOMAIN}_traffic_flow_{key}"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, f"{self._entry.entry_id}_traffic_flow")},
+            entry_type=DeviceEntryType.SERVICE,
+            name=self._entry.title,
+            manufacturer="Trafikverket",
+            model="Trafikflöde",
+        )
+
+    @property
+    def _snapshot(self) -> TrafficFlowSnapshot | None:
+        return self.coordinator.data
+
+    def _common_attributes(self) -> dict[str, Any]:
+        snapshot = self._snapshot
+        return {
+            "attribution": ATTRIBUTION,
+            "site_ids": list(self.coordinator.site_ids),
+            "site_label": self.coordinator.site_label,
+            "latitude": self.coordinator.latitude,
+            "longitude": self.coordinator.longitude,
+            "measurement_time": _datetime_attr(snapshot.measurement_time)
+            if snapshot
+            else None,
+            "data_age_minutes": snapshot.data_age_minutes if snapshot else None,
+            "data_quality": snapshot.data_quality if snapshot else None,
+            "valid_measurement_count": snapshot.valid_measurement_count
+            if snapshot
+            else 0,
+            "total_measurement_count": snapshot.total_measurement_count
+            if snapshot
+            else 0,
+            "last_modified": _datetime_attr(snapshot.last_modified)
+            if snapshot
+            else None,
+            "last_change_id": snapshot.last_change_id if snapshot else None,
+        }
+
+
+class TrafikinfoTrafficFlowRateSensor(TrafikinfoTrafficFlowEntity):
+    """Total current traffic flow over usable lane detectors."""
+
+    _attr_native_unit_of_measurement = "vehicles/h"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _unrecorded_attributes = frozenset({"measurements"})
+
+    def __init__(self, entry: ConfigEntry, coordinator: TrafficFlowCoordinator) -> None:
+        super().__init__(
+            entry,
+            coordinator,
+            key="rate",
+            translation_key="traffic_flow_rate",
+            icon="mdi:counter",
+        )
+
+    @property
+    def native_value(self) -> int | None:
+        snapshot = self._snapshot
+        return snapshot.total_flow_rate if snapshot is not None else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        attributes = self._common_attributes()
+        snapshot = self._snapshot
+        now = dt_util.utcnow()
+        attributes["measurements"] = (
+            [item.as_dict(now=now) for item in snapshot.measurements]
+            if snapshot
+            else []
+        )
+        return attributes
+
+
+class TrafikinfoTrafficFlowSpeedSensor(TrafikinfoTrafficFlowEntity):
+    """Flow-weighted average speed over usable lane detectors."""
+
+    _attr_device_class = SensorDeviceClass.SPEED
+    _attr_native_unit_of_measurement = UnitOfSpeed.KILOMETERS_PER_HOUR
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, entry: ConfigEntry, coordinator: TrafficFlowCoordinator) -> None:
+        super().__init__(
+            entry,
+            coordinator,
+            key="speed",
+            translation_key="traffic_flow_speed",
+            icon="mdi:speedometer",
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        snapshot = self._snapshot
+        return snapshot.weighted_average_speed if snapshot is not None else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return self._common_attributes()
+
+
+class TrafikinfoTrafficFlowQualitySensor(TrafikinfoTrafficFlowEntity):
+    """Worst current source quality or freshness state for the selected site."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+
+    def __init__(self, entry: ConfigEntry, coordinator: TrafficFlowCoordinator) -> None:
+        super().__init__(
+            entry,
+            coordinator,
+            key="quality",
+            translation_key="traffic_flow_quality",
+            icon="mdi:check-decagram-outline",
+        )
+
+    @property
+    def native_value(self) -> str | None:
+        snapshot = self._snapshot
+        return snapshot.data_quality if snapshot is not None else None
+
+    @property
+    def options(self) -> list[str]:
+        return list(TRAFFIC_FLOW_QUALITY_STATES)
+
+    @property
+    def icon(self) -> str:
+        quality = self.native_value
+        if quality == TRAFFIC_FLOW_QUALITY_GOOD:
+            return "mdi:check-decagram-outline"
+        if quality == TRAFFIC_FLOW_QUALITY_DEGRADED:
+            return "mdi:alert-circle-outline"
+        if quality == TRAFFIC_FLOW_QUALITY_STALE:
+            return "mdi:clock-alert-outline"
+        if quality == TRAFFIC_FLOW_QUALITY_BAD:
+            return "mdi:close-octagon-outline"
+        return "mdi:help-circle-outline"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return self._common_attributes()
 
 
 class TrafikinfoTravelTimeRouteEntity(

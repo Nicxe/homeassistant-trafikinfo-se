@@ -88,6 +88,9 @@ If needed, add it manually via **Settings > Devices & Services > Add Integration
 - Vägarbete
 - Väglag (worst current condition in the selected area)
 - Avvikande vägsträckor (number of sections with a condition code above normal)
+- Trafikflöde (combined vehicles per hour at one measurement site)
+- Medelhastighet (flow-weighted speed at the selected site)
+- Datakvalitet (source quality and freshness for the selected site)
 
 ## RoadCondition support (phase 1)
 Road conditions are available as a separate setup type called **Väglag**. This uses Trafikverket's `Road.TrafficInfo/RoadCondition` model to show the assessed condition of road sections, including warnings, causes, and reported maintenance measures.
@@ -127,6 +130,38 @@ show_map: true
 
 ### Empty data and errors
 An empty but successful API response is reported as `no_data`; it is not treated as a failure. Temporary network, timeout, or Trafikverket API errors make the entities unavailable until the coordinator's next successful retry. A missing or rejected API key starts Home Assistant's authentication recovery flow instead of silently returning empty data. Home Assistant logs include an actionable error without logging the API key.
+
+## TrafficFlow support (phase 2)
+Traffic flow is available as a separate setup type called **Trafikflöde**. It uses Trafikverket's `Road.TrafficInfo/TrafficFlow` model and complements the incident and road-condition views with current detector-based traffic volume and speed.
+
+When adding a Trafikflöde entry, find a measurement site in either of these ways:
+
+- choose a position and search radius to list the nearest sites
+- choose one county and a reference position to sort that county's sites by distance
+
+The site list combines nearby lane detectors that belong to the same physical location and direction. After a site is selected, the integration stores its actual Trafikverket `SiteId` values and limits every recurring API request to those identifiers. This avoids downloading nationwide flow data every minute. Use **Reconfigure** on the integration entry to select a different site or direction.
+
+Each Trafikflöde entry creates three sensors:
+
+- **Trafikflöde** — total current flow across usable lane detectors, in vehicles per hour
+- **Medelhastighet** — flow-weighted average speed across usable lane detectors, in km/h
+- **Datakvalitet** — the worst current quality or freshness state reported for the selected site
+
+The quality sensor has the stable states `no_data`, `good`, `degraded`, `bad`, `stale`, and `unknown`. Measurements marked `bad`, older than five minutes, or of unknown quality are not included in the numeric flow or speed values. `degraded` measurements remain usable but are explicitly exposed as degraded. The attributes include measurement time, data age, selected site identifiers, detector counts, and the individual lane measurements. The fixed polling interval is one minute.
+
+An empty successful response is shown as `no_data`. If all returned measurements are unusable, the flow and speed sensors are `unknown` while the quality sensor explains why. Temporary network, timeout, or API failures make the entities unavailable until the next successful update, and a rejected API key starts Home Assistant's authentication recovery flow.
+
+FAS 2 intentionally uses Home Assistant's normal entity and history cards rather than adding another custom card. Add the three entities through the dashboard editor, or replace the placeholder IDs below with the actual entity IDs from your Trafikflöde entry:
+
+```yaml
+type: entities
+entities:
+  - entity: sensor.replace_with_traffic_flow
+  - entity: sensor.replace_with_average_speed
+  - entity: sensor.replace_with_data_quality
+```
+
+For a historical view, add the flow and speed sensors to a History graph or Statistics graph card. The source model is documented in Trafikverket's [TrafficFlow data model](https://data.trafikverket.se/documentation/datacache/data-model?namespace=Road.TrafficInfo&collection=TrafficFlow).
 
 ## TravelTimeRoute support
 The integration now supports Trafikverket's `TravelTimeRoute` data model as a separate route-focused setup flow within the same integration.
