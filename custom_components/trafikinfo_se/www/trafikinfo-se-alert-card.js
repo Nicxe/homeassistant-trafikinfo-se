@@ -2655,6 +2655,52 @@ class TrafikinfoSeRoadConditionCard extends TrafikinfoSeAlertCard {
         gap: 5px;
         margin-top: 3px;
       }
+      .condition-normal-status {
+        --trafikinfo-normal-accent: var(--success-color, #2e7d32);
+        display: grid;
+        grid-template-columns: 42px minmax(0, 1fr);
+        gap: 12px;
+        align-items: center;
+        margin: 12px 16px 16px;
+        padding: 13px 14px;
+        border: 1px solid color-mix(in srgb, var(--trafikinfo-normal-accent) 35%, var(--divider-color));
+        border-radius: var(--trafikinfo-alert-border-radius, 8px);
+        background: linear-gradient(
+          135deg,
+          color-mix(in srgb, var(--trafikinfo-normal-accent) 12%, var(--card-background-color)) 0%,
+          color-mix(in srgb, var(--trafikinfo-normal-accent) 4%, var(--card-background-color)) 72%
+        );
+      }
+      .condition-normal-status-icon {
+        display: grid;
+        place-items: center;
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        color: var(--trafikinfo-normal-accent);
+        background: color-mix(in srgb, var(--trafikinfo-normal-accent) 13%, var(--card-background-color));
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--trafikinfo-normal-accent) 24%, transparent);
+      }
+      .condition-normal-status-icon ha-icon {
+        --mdc-icon-size: 24px;
+      }
+      .condition-normal-status-copy {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      .condition-normal-status-title {
+        color: var(--primary-text-color);
+        font-size: 1rem;
+        font-weight: 700;
+        line-height: 1.3;
+      }
+      .condition-normal-status-detail {
+        color: var(--secondary-text-color);
+        font-size: 0.84rem;
+        line-height: 1.35;
+      }
     `,
   ];
 
@@ -2663,6 +2709,7 @@ class TrafikinfoSeRoadConditionCard extends TrafikinfoSeAlertCard {
     const normalized = { ...config };
     if (normalized.show_header === undefined) normalized.show_header = true;
     if (normalized.show_normal === undefined) normalized.show_normal = false;
+    if (normalized.show_normal_status === undefined) normalized.show_normal_status = true;
     if (normalized.show_details === undefined) normalized.show_details = true;
     if (normalized.show_map === undefined) normalized.show_map = false;
     if (normalized.max_items === undefined) normalized.max_items = 0;
@@ -2701,6 +2748,7 @@ class TrafikinfoSeRoadConditionCard extends TrafikinfoSeAlertCard {
       title: '',
       show_header: true,
       show_normal: false,
+      show_normal_status: true,
       show_details: true,
       show_map: false,
       max_items: 0,
@@ -2762,6 +2810,22 @@ class TrafikinfoSeRoadConditionCard extends TrafikinfoSeAlertCard {
       return html`<ha-card .header=${header}><div class="empty">${this._conditionText('unavailable')}</div></ha-card>`;
     }
     if (items.length === 0) {
+      const normalStatus = this._normalStatusData();
+      if (normalStatus.isNormal && this.config.show_normal_status !== false) {
+        return html`
+          <ha-card .header=${header}>
+            <div class="condition-normal-status" role="status" aria-live="polite">
+              <div class="condition-normal-status-icon">
+                <ha-icon icon="mdi:check-circle-outline"></ha-icon>
+              </div>
+              <div class="condition-normal-status-copy">
+                <div class="condition-normal-status-title">${this._conditionText('normal_status')}</div>
+                <div class="condition-normal-status-detail">${this._normalStatusDetail(normalStatus.total)}</div>
+              </div>
+            </div>
+          </ha-card>
+        `;
+      }
       const total = Number(stateObj.attributes?.conditions_total || 0);
       const message = total > 0 && this.config.show_normal !== true
         ? this._conditionText('no_hazards')
@@ -2787,6 +2851,24 @@ class TrafikinfoSeRoadConditionCard extends TrafikinfoSeAlertCard {
         </div>
       </ha-card>
     `;
+  }
+
+  _normalStatusData() {
+    const stateObj = this._stateObj();
+    const totalValue = Number(stateObj?.attributes?.conditions_total || 0);
+    const total = Number.isFinite(totalValue) && totalValue > 0 ? totalValue : 0;
+    const hazardousValue = Number(stateObj?.attributes?.hazardous_sections || 0);
+    const hazardous = Number.isFinite(hazardousValue) && hazardousValue > 0 ? hazardousValue : 0;
+    return {
+      isNormal: stateObj?.state === 'normal' && hazardous === 0,
+      total,
+    };
+  }
+
+  _normalStatusDetail(total) {
+    if (total === 1) return this._conditionText('normal_detail_one');
+    if (total > 1) return this._conditionText('normal_detail_many').replace('{count}', String(total));
+    return this._conditionText('normal_detail');
   }
 
   _conditionItems() {
@@ -2875,6 +2957,10 @@ class TrafikinfoSeRoadConditionCard extends TrafikinfoSeAlertCard {
         no_hazards: 'No hazardous road conditions',
         unavailable: 'Road condition data is unavailable',
         normal: 'Normal',
+        normal_status: 'Normal road conditions',
+        normal_detail: 'No hazardous road conditions in the selected area',
+        normal_detail_one: '1 road section checked – no hazardous conditions',
+        normal_detail_many: '{count} road sections checked – no hazardous conditions',
         difficult: 'Difficult or risk',
         very_difficult: 'Very difficult',
         ice_snow: 'Ice and snow',
@@ -2890,6 +2976,10 @@ class TrafikinfoSeRoadConditionCard extends TrafikinfoSeAlertCard {
         no_hazards: 'Inga avvikande väglag',
         unavailable: 'Väglagsdata är inte tillgänglig',
         normal: 'Normalt',
+        normal_status: 'Normalt väglag',
+        normal_detail: 'Inga avvikande väglag i det valda området',
+        normal_detail_one: '1 vägavsnitt kontrollerat – inga avvikande väglag',
+        normal_detail_many: '{count} vägavsnitt kontrollerade – inga avvikande väglag',
         difficult: 'Besvärligt eller risk',
         very_difficult: 'Mycket besvärligt',
         ice_snow: 'Is och snö',
@@ -3001,6 +3091,633 @@ class TrafikinfoSeRoadConditionCard extends TrafikinfoSeAlertCard {
   }
 }
 
+class TrafikinfoSeTrafficFlowCard extends TrafikinfoSeAlertCard {
+  static styles = [
+    TrafikinfoSeAlertCard.styles,
+    css`
+      :host {
+        --trafikinfo-flow-good: var(--success-color, #2e7d32);
+        --trafikinfo-flow-degraded: var(--warning-color, #f9a825);
+        --trafikinfo-flow-bad: var(--error-color, #c62828);
+        --trafikinfo-flow-stale: #ef6c00;
+        --trafikinfo-flow-unknown: var(--secondary-text-color, #757575);
+      }
+      .flow-card {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0;
+        overflow: hidden;
+        --trafikinfo-accent: var(--trafikinfo-flow-unknown);
+      }
+      .flow-card.flow-good { --trafikinfo-accent: var(--trafikinfo-flow-good); }
+      .flow-card.flow-degraded { --trafikinfo-accent: var(--trafikinfo-flow-degraded); }
+      .flow-card.flow-bad { --trafikinfo-accent: var(--trafikinfo-flow-bad); }
+      .flow-card.flow-stale { --trafikinfo-accent: var(--trafikinfo-flow-stale); }
+      .flow-card.flow-no-data,
+      .flow-card.flow-unknown,
+      .flow-card.flow-unavailable { --trafikinfo-accent: var(--trafikinfo-flow-unknown); }
+      .flow-content {
+        gap: 12px;
+      }
+      .flow-topline {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .flow-site {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      .flow-site-kicker {
+        color: var(--secondary-text-color);
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        line-height: 1;
+        text-transform: uppercase;
+      }
+      .flow-site-name {
+        color: var(--primary-text-color);
+        font-size: 1rem;
+        font-weight: 650;
+        line-height: 1.35;
+        overflow-wrap: anywhere;
+      }
+      .flow-quality {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        flex: 0 0 auto;
+        padding: 5px 9px;
+        border: 1px solid color-mix(in srgb, var(--trafikinfo-accent) 45%, var(--divider-color));
+        border-radius: 999px;
+        color: var(--trafikinfo-accent);
+        background: color-mix(in srgb, var(--trafikinfo-accent) 10%, var(--card-background-color));
+        font-size: 0.78rem;
+        font-weight: 700;
+        line-height: 1;
+        white-space: nowrap;
+      }
+      .flow-quality ha-icon {
+        --mdc-icon-size: 16px;
+      }
+      .flow-metrics {
+        display: grid;
+        grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+        gap: 1px;
+        border: 1px solid var(--divider-color);
+        border-radius: calc(var(--trafikinfo-alert-border-radius, 8px) - 1px);
+        overflow: hidden;
+        background: var(--divider-color);
+      }
+      .flow-metric {
+        position: relative;
+        min-width: 0;
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 10px;
+        align-items: center;
+        padding: 14px;
+        background: color-mix(in srgb, var(--trafikinfo-accent) 4%, var(--card-background-color));
+      }
+      .flow-metric.primary {
+        background: linear-gradient(
+          135deg,
+          color-mix(in srgb, var(--trafikinfo-accent) 13%, var(--card-background-color)) 0%,
+          color-mix(in srgb, var(--trafikinfo-accent) 4%, var(--card-background-color)) 72%
+        );
+      }
+      .flow-metric-icon {
+        --mdc-icon-size: 28px;
+        color: var(--trafikinfo-accent);
+      }
+      .flow-metric-copy {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      .flow-value-row {
+        min-width: 0;
+        display: flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 5px;
+      }
+      .flow-value {
+        color: var(--primary-text-color);
+        font-size: clamp(1.7rem, 6vw, 2.35rem);
+        font-variant-numeric: tabular-nums;
+        font-weight: 750;
+        letter-spacing: -0.035em;
+        line-height: 0.95;
+      }
+      .flow-unit {
+        color: var(--secondary-text-color);
+        font-size: 0.8rem;
+        font-weight: 650;
+        white-space: nowrap;
+      }
+      .flow-metric-label {
+        color: var(--secondary-text-color);
+        font-size: 0.78rem;
+        line-height: 1.2;
+      }
+      .flow-statusline {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 7px 14px;
+        color: var(--secondary-text-color);
+        font-size: 0.82rem;
+      }
+      .flow-statusline span {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .flow-statusline ha-icon {
+        --mdc-icon-size: 16px;
+        color: var(--trafikinfo-accent);
+      }
+      .flow-lanes {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding-top: 2px;
+      }
+      .flow-lanes-title {
+        color: var(--secondary-text-color);
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+      }
+      .flow-lane {
+        display: grid;
+        grid-template-columns: minmax(74px, 0.8fr) minmax(100px, 1fr) minmax(86px, 0.8fr) auto;
+        gap: 9px;
+        align-items: center;
+        min-height: 34px;
+        padding: 6px 9px;
+        border: 1px solid var(--divider-color);
+        border-radius: 7px;
+        background: color-mix(in srgb, var(--secondary-background-color) 54%, transparent);
+        font-size: 0.82rem;
+      }
+      .flow-lane-name {
+        min-width: 0;
+        color: var(--primary-text-color);
+        font-weight: 700;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .flow-lane-value {
+        color: var(--primary-text-color);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .flow-lane-quality {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--lane-quality-color, var(--trafikinfo-flow-unknown));
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--lane-quality-color, var(--trafikinfo-flow-unknown)) 16%, transparent);
+      }
+      .flow-lane-quality.lane-good { --lane-quality-color: var(--trafikinfo-flow-good); }
+      .flow-lane-quality.lane-degraded { --lane-quality-color: var(--trafikinfo-flow-degraded); }
+      .flow-lane-quality.lane-bad { --lane-quality-color: var(--trafikinfo-flow-bad); }
+      .flow-lane-quality.lane-stale { --lane-quality-color: var(--trafikinfo-flow-stale); }
+      .flow-unavailable-message {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--secondary-text-color);
+        padding: 4px 0;
+      }
+      .flow-unavailable-message ha-icon {
+        --mdc-icon-size: 22px;
+        color: var(--trafikinfo-accent);
+      }
+      @media (max-width: 520px) {
+        .flow-topline {
+          align-items: stretch;
+          flex-direction: column;
+        }
+        .flow-quality {
+          align-self: flex-start;
+        }
+        .flow-metrics {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .flow-lane {
+          grid-template-columns: minmax(72px, 1fr) minmax(94px, 1fr) auto;
+        }
+        .flow-lane-speed {
+          display: none;
+        }
+      }
+    `,
+  ];
+
+  setConfig(config) {
+    const flowEntity = String(config?.flow_entity || config?.entity || '').trim();
+    const speedEntity = String(config?.speed_entity || '').trim();
+    const qualityEntity = String(config?.quality_entity || '').trim();
+    if (!flowEntity || !speedEntity || !qualityEntity) {
+      throw new Error('You must specify flow, speed, and quality entities.');
+    }
+    this.config = {
+      ...config,
+      entity: flowEntity,
+      flow_entity: flowEntity,
+      speed_entity: speedEntity,
+      quality_entity: qualityEntity,
+      show_header: config.show_header !== false,
+      show_updated: config.show_updated !== false,
+      show_lanes: config.show_lanes === true,
+      severity_background: config.severity_background !== false,
+    };
+  }
+
+  static getConfigElement() {
+    return document.createElement('trafikinfo-se-traffic-flow-card-editor');
+  }
+
+  static getStubConfig(hass, entities) {
+    const entityIds = Array.isArray(entities) && entities.length > 0
+      ? entities
+      : Object.keys(hass?.states || {});
+    const candidates = entityIds
+      .map((entityId) => ({ entityId, stateObj: hass?.states?.[entityId] }))
+      .filter(({ entityId, stateObj }) => entityId.startsWith('sensor.') && Array.isArray(stateObj?.attributes?.site_ids));
+    const flow = candidates.find(({ stateObj }) => Array.isArray(stateObj.attributes?.measurements))
+      || candidates.find(({ stateObj }) => String(stateObj.attributes?.unit_of_measurement || '').toLowerCase().includes('vehicles'));
+    const siteSignature = JSON.stringify(flow?.stateObj?.attributes?.site_ids || []);
+    const sameSite = candidates.filter(({ stateObj }) => JSON.stringify(stateObj.attributes?.site_ids || []) === siteSignature);
+    const qualityStates = new Set(['no_data', 'good', 'degraded', 'bad', 'stale', 'unknown']);
+    const quality = sameSite.find(({ stateObj }) => qualityStates.has(String(stateObj?.state || '').toLowerCase()));
+    const speed = sameSite.find(({ stateObj }) => String(stateObj?.attributes?.unit_of_measurement || '').toLowerCase() === 'km/h');
+    return {
+      flow_entity: flow?.entityId || '',
+      speed_entity: speed?.entityId || '',
+      quality_entity: quality?.entityId || '',
+      title: '',
+      show_header: true,
+      show_updated: true,
+      show_lanes: false,
+      severity_background: true,
+    };
+  }
+
+  getCardSize() {
+    const header = this._showHeader() ? 1 : 0;
+    const laneRows = this.config?.show_lanes === true ? Math.min(this._measurements().length, 4) : 0;
+    return header + 2 + laneRows;
+  }
+
+  shouldUpdate(changed) {
+    if (changed.has('config')) return true;
+    if (!changed.has('hass')) return false;
+    const snapshot = this._trafficFlowData();
+    const key = JSON.stringify([
+      snapshot.flowRate,
+      snapshot.speed,
+      snapshot.quality,
+      snapshot.measurementTime,
+      snapshot.dataAgeMinutes,
+      snapshot.validCount,
+      snapshot.totalCount,
+      snapshot.siteLabel,
+      snapshot.measurements,
+      snapshot.unavailable,
+    ]);
+    if (this._lastTrafficFlowKey === key) return false;
+    this._lastTrafficFlowKey = key;
+    return true;
+  }
+
+  render() {
+    if (!this.hass || !this.config) return html``;
+    const data = this._trafficFlowData();
+    const header = this._showHeader()
+      ? (this.config.title || this._flowText('traffic_flow'))
+      : undefined;
+    const qualityClass = this._qualityClass(data.quality);
+    const accentBackground = this.config.severity_background !== false ? 'bg-severity' : '';
+    const ariaLabel = `${this._flowText('traffic_flow')}: ${this._formatFlow(data.flowRate)}, ${this._flowText('average_speed')}: ${this._formatSpeedValue(data.speed)}, ${this._qualityLabel(data.quality)}`;
+    return html`
+      <ha-card .header=${header}>
+        <div class="alerts">
+          <div
+            class="alert flow-card ${qualityClass} ${accentBackground}"
+            role="button"
+            tabindex="0"
+            aria-label=${ariaLabel}
+            @click=${() => this._openMoreInfo()}
+            @keydown=${(event) => this._handleFlowKeydown(event)}
+          >
+            <div class="content flow-content">
+              <div class="flow-topline">
+                <div class="flow-site">
+                  <div class="flow-site-kicker">${this._flowText('measurement_site')}</div>
+                  <div class="flow-site-name">${data.siteLabel || this._flowText('selected_site')}</div>
+                </div>
+                <div class="flow-quality" title=${this._flowText(`quality_description_${data.quality}`)}>
+                  <ha-icon icon=${this._qualityIcon(data.quality)}></ha-icon>
+                  <span>${this._qualityLabel(data.quality)}</span>
+                </div>
+              </div>
+
+              ${data.unavailable ? html`
+                <div class="flow-unavailable-message">
+                  <ha-icon icon="mdi:cloud-alert-outline"></ha-icon>
+                  <span>${this._flowText('unavailable')}</span>
+                </div>
+              ` : html`
+                <div class="flow-metrics">
+                  <div class="flow-metric primary">
+                    <ha-icon class="flow-metric-icon" icon="mdi:counter"></ha-icon>
+                    <div class="flow-metric-copy">
+                      <div class="flow-value-row">
+                        <span class="flow-value">${this._formatNumber(data.flowRate, 0)}</span>
+                        <span class="flow-unit">${this._flowText('vehicles_per_hour')}</span>
+                      </div>
+                      <div class="flow-metric-label">${this._flowText('total_flow')}</div>
+                    </div>
+                  </div>
+                  <div class="flow-metric">
+                    <ha-icon class="flow-metric-icon" icon="mdi:speedometer"></ha-icon>
+                    <div class="flow-metric-copy">
+                      <div class="flow-value-row">
+                        <span class="flow-value">${this._formatNumber(data.speed, 1)}</span>
+                        <span class="flow-unit">km/h</span>
+                      </div>
+                      <div class="flow-metric-label">${this._flowText('weighted_speed')}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="flow-statusline">
+                  ${this.config.show_updated !== false && data.measurementTime ? html`
+                    <span>
+                      <ha-icon icon="mdi:clock-outline"></ha-icon>
+                      ${this._flowText('measured')} ${this._formatDate(data.measurementTime)}
+                    </span>
+                  ` : html``}
+                  ${this.config.show_updated !== false && data.dataAgeMinutes !== null ? html`
+                    <span>
+                      <ha-icon icon="mdi:update"></ha-icon>
+                      ${this._formatAge(data.dataAgeMinutes)}
+                    </span>
+                  ` : html``}
+                  <span>
+                    <ha-icon icon="mdi:road-variant"></ha-icon>
+                    ${this._formatDetectorCount(data.validCount, data.totalCount)}
+                  </span>
+                </div>
+
+                ${this.config.show_lanes === true && data.measurements.length > 0 ? html`
+                  <div class="flow-lanes">
+                    <div class="flow-lanes-title">${this._flowText('lane_details')}</div>
+                    ${data.measurements.map((measurement, index) => this._renderLane(measurement, index))}
+                  </div>
+                ` : html``}
+              `}
+            </div>
+          </div>
+        </div>
+      </ha-card>
+    `;
+  }
+
+  _trafficFlowState(entityId) {
+    return this.hass?.states?.[entityId] || null;
+  }
+
+  _trafficFlowData() {
+    const flowState = this._trafficFlowState(this.config?.flow_entity);
+    const speedState = this._trafficFlowState(this.config?.speed_entity);
+    const qualityState = this._trafficFlowState(this.config?.quality_entity);
+    const flowAttrs = flowState?.attributes || {};
+    const speedAttrs = speedState?.attributes || {};
+    const qualityAttrs = qualityState?.attributes || {};
+    const states = [flowState, speedState, qualityState];
+    const unavailable = states.some((stateObj) => !stateObj || stateObj.state === 'unavailable');
+    const rawQuality = unavailable
+      ? 'unavailable'
+      : (
+          !['unknown', 'unavailable', ''].includes(String(qualityState?.state || '').toLowerCase())
+            ? qualityState.state
+            : (qualityAttrs.data_quality || flowAttrs.data_quality || speedAttrs.data_quality || 'unknown')
+        );
+    const quality = this._normalizeQuality(rawQuality);
+    const measurements = Array.isArray(flowAttrs.measurements)
+      ? flowAttrs.measurements.filter((item) => item && typeof item === 'object')
+      : [];
+    return {
+      flowRate: this._flowNumber(flowState?.state),
+      speed: this._flowNumber(speedState?.state),
+      quality,
+      measurementTime: flowAttrs.measurement_time || speedAttrs.measurement_time || qualityAttrs.measurement_time || null,
+      dataAgeMinutes: this._flowNumber(flowAttrs.data_age_minutes ?? speedAttrs.data_age_minutes ?? qualityAttrs.data_age_minutes),
+      validCount: this._flowNumber(flowAttrs.valid_measurement_count ?? qualityAttrs.valid_measurement_count) ?? 0,
+      totalCount: this._flowNumber(flowAttrs.total_measurement_count ?? qualityAttrs.total_measurement_count) ?? measurements.length,
+      siteLabel: this._cleanSiteLabel(flowAttrs.site_label || speedAttrs.site_label || qualityAttrs.site_label),
+      measurements,
+      unavailable,
+    };
+  }
+
+  _measurements() {
+    return this._trafficFlowData().measurements;
+  }
+
+  _flowNumber(value) {
+    if (value === null || value === undefined || value === '' || ['unknown', 'unavailable'].includes(String(value).toLowerCase())) {
+      return null;
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  _normalizeQuality(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    return ['no_data', 'good', 'degraded', 'bad', 'stale', 'unknown', 'unavailable'].includes(normalized)
+      ? normalized
+      : 'unknown';
+  }
+
+  _qualityClass(quality) {
+    return `flow-${this._normalizeQuality(quality).replace('_', '-')}`;
+  }
+
+  _qualityIcon(quality) {
+    const icons = {
+      good: 'mdi:check-decagram-outline',
+      degraded: 'mdi:alert-circle-outline',
+      bad: 'mdi:close-octagon-outline',
+      stale: 'mdi:clock-alert-outline',
+      no_data: 'mdi:database-off-outline',
+      unavailable: 'mdi:cloud-alert-outline',
+      unknown: 'mdi:help-circle-outline',
+    };
+    return icons[this._normalizeQuality(quality)] || icons.unknown;
+  }
+
+  _qualityLabel(quality) {
+    return this._flowText(`quality_${this._normalizeQuality(quality)}`);
+  }
+
+  _cleanSiteLabel(value) {
+    const parts = String(value || '')
+      .split('•')
+      .map((part) => part.trim())
+      .filter(Boolean);
+    if (parts.length > 1 && /(fordon\s*\/\s*tim|fordon\/tim|vehicles\s*\/\s*h|flöde saknas)/i.test(parts.at(-1))) {
+      parts.pop();
+    }
+    return parts.join(' • ');
+  }
+
+  _formatNumber(value, maximumFractionDigits = 0) {
+    if (value === null || value === undefined) return '—';
+    const locale = this.hass?.locale?.language || this.hass?.language || 'en';
+    return new Intl.NumberFormat(locale, {
+      maximumFractionDigits,
+      minimumFractionDigits: 0,
+    }).format(value);
+  }
+
+  _formatFlow(value) {
+    return value === null ? this._flowText('unknown_value') : `${this._formatNumber(value, 0)} ${this._flowText('vehicles_per_hour')}`;
+  }
+
+  _formatSpeedValue(value) {
+    return value === null ? this._flowText('unknown_value') : `${this._formatNumber(value, 1)} km/h`;
+  }
+
+  _formatAge(value) {
+    if (value === null) return '';
+    if (value < 1) return this._flowText('updated_now');
+    const rounded = Math.round(value);
+    return this._flowText(rounded === 1 ? 'minute_old' : 'minutes_old').replace('{count}', String(rounded));
+  }
+
+  _formatDetectorCount(valid, total) {
+    return this._flowText('detectors').replace('{valid}', String(valid ?? 0)).replace('{total}', String(total ?? 0));
+  }
+
+  _laneName(measurement, index) {
+    const raw = String(measurement?.specific_lane || '').trim();
+    const number = raw.match(/\d+/)?.[0];
+    if (number) return `${this._flowText('lane')} ${number}`;
+    return raw || `${this._flowText('lane')} ${index + 1}`;
+  }
+
+  _renderLane(measurement, index) {
+    const quality = this._normalizeQuality(measurement?.effective_quality || measurement?.data_quality || 'unknown');
+    return html`
+      <div class="flow-lane" title=${this._qualityLabel(quality)}>
+        <span class="flow-lane-name">${this._laneName(measurement, index)}</span>
+        <span class="flow-lane-value">${this._formatFlow(this._flowNumber(measurement?.vehicle_flow_rate))}</span>
+        <span class="flow-lane-value flow-lane-speed">${this._formatSpeedValue(this._flowNumber(measurement?.average_vehicle_speed_kmh))}</span>
+        <span class="flow-lane-quality lane-${quality.replace('_', '-')}" aria-label=${this._qualityLabel(quality)}></span>
+      </div>
+    `;
+  }
+
+  _openMoreInfo() {
+    const event = new CustomEvent('hass-more-info', {
+      bubbles: true,
+      composed: true,
+      detail: { entityId: this.config.flow_entity },
+    });
+    this.dispatchEvent(event);
+  }
+
+  _handleFlowKeydown(event) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    this._openMoreInfo();
+  }
+
+  _flowText(key) {
+    const language = (this.hass?.locale?.language || this.hass?.language || 'en').toLowerCase();
+    const labels = {
+      en: {
+        traffic_flow: 'Traffic flow',
+        measurement_site: 'Measurement site',
+        selected_site: 'Selected Trafikverket site',
+        total_flow: 'Total traffic flow',
+        average_speed: 'Average speed',
+        weighted_speed: 'Flow-weighted average speed',
+        vehicles_per_hour: 'vehicles/h',
+        measured: 'Measured',
+        detectors: '{valid} of {total} detectors',
+        lane_details: 'Lane details',
+        lane: 'Lane',
+        unavailable: 'Traffic-flow data is unavailable. Home Assistant will retry automatically.',
+        updated_now: 'Updated less than a minute ago',
+        minute_old: '{count} minute old',
+        minutes_old: '{count} minutes old',
+        unknown_value: 'Unknown',
+        quality_good: 'Good data',
+        quality_degraded: 'Degraded data',
+        quality_bad: 'Bad data',
+        quality_stale: 'Stale data',
+        quality_no_data: 'No data',
+        quality_unknown: 'Unknown quality',
+        quality_unavailable: 'Unavailable',
+        quality_description_good: 'All current detector values have good source quality.',
+        quality_description_degraded: 'At least one current detector value has degraded source quality.',
+        quality_description_bad: 'At least one detector reports bad data and is excluded from the totals.',
+        quality_description_stale: 'The latest detector data is too old and is excluded from the totals.',
+        quality_description_no_data: 'Trafikverket returned no measurements for the selected site.',
+        quality_description_unknown: 'The source quality could not be determined.',
+        quality_description_unavailable: 'The integration is temporarily unavailable and will retry automatically.',
+      },
+      sv: {
+        traffic_flow: 'Trafikflöde',
+        measurement_site: 'Mätplats',
+        selected_site: 'Vald mätplats hos Trafikverket',
+        total_flow: 'Totalt trafikflöde',
+        average_speed: 'Medelhastighet',
+        weighted_speed: 'Flödesviktad medelhastighet',
+        vehicles_per_hour: 'fordon/tim',
+        measured: 'Mätt',
+        detectors: '{valid} av {total} detektorer',
+        lane_details: 'Körfältsdetaljer',
+        lane: 'Körfält',
+        unavailable: 'Trafikflödesdata är inte tillgänglig. Home Assistant försöker igen automatiskt.',
+        updated_now: 'Uppdaterad för mindre än en minut sedan',
+        minute_old: '{count} minut gammal',
+        minutes_old: '{count} minuter gammal',
+        unknown_value: 'Okänt',
+        quality_good: 'Bra data',
+        quality_degraded: 'Nedsatt data',
+        quality_bad: 'Dålig data',
+        quality_stale: 'För gammal data',
+        quality_no_data: 'Ingen data',
+        quality_unknown: 'Okänd kvalitet',
+        quality_unavailable: 'Inte tillgänglig',
+        quality_description_good: 'Alla aktuella detektorvärden har bra källkvalitet.',
+        quality_description_degraded: 'Minst ett aktuellt detektorvärde har nedsatt källkvalitet.',
+        quality_description_bad: 'Minst en detektor rapporterar dålig data och räknas inte med i totalvärdena.',
+        quality_description_stale: 'Den senaste detektordatan är för gammal och räknas inte med i totalvärdena.',
+        quality_description_no_data: 'Trafikverket returnerade inga mätningar för den valda platsen.',
+        quality_description_unknown: 'Källkvaliteten kunde inte fastställas.',
+        quality_description_unavailable: 'Integrationen är tillfälligt otillgänglig och försöker igen automatiskt.',
+      },
+    };
+    const dictionary = language.startsWith('sv') ? labels.sv : labels.en;
+    return dictionary[key] || labels.en[key] || key;
+  }
+}
+
 if (!customElements.get('trafikinfo-se-alert-card')) {
   customElements.define('trafikinfo-se-alert-card', TrafikinfoSeAlertCard);
 }
@@ -3015,6 +3732,10 @@ if (!customElements.get('trafikinfo-se-route-card')) {
 
 if (!customElements.get('trafikinfo-se-road-condition-card')) {
   customElements.define('trafikinfo-se-road-condition-card', TrafikinfoSeRoadConditionCard);
+}
+
+if (!customElements.get('trafikinfo-se-traffic-flow-card')) {
+  customElements.define('trafikinfo-se-traffic-flow-card', TrafikinfoSeTrafficFlowCard);
 }
 
 class TrafikinfoSeAlertCardEditor extends LitElement {
@@ -3531,7 +4252,8 @@ class TrafikinfoSeRoadConditionCardEditor extends LitElement {
       { name: 'entity', label: 'Entity', required: true, selector: { entity: { domain: 'sensor', integration: 'trafikinfo_se' } } },
       { name: 'title', label: 'Title', selector: { text: {} } },
       { name: 'show_header', label: 'Show header', selector: { boolean: {} } },
-      { name: 'show_normal', label: 'Show normal road sections', selector: { boolean: {} } },
+      { name: 'show_normal_status', label: 'Show normal status when no hazards are found', selector: { boolean: {} } },
+      { name: 'show_normal', label: 'Show individual normal road sections', selector: { boolean: {} } },
       { name: 'show_details', label: 'Show warnings, causes, and measures', selector: { boolean: {} } },
       { name: 'show_map', label: 'Show map', selector: { boolean: {} } },
       { name: 'max_items', label: 'Max items (0 = all)', selector: { number: { min: 0, max: 200, mode: 'box' } } },
@@ -3546,6 +4268,7 @@ class TrafikinfoSeRoadConditionCardEditor extends LitElement {
       entity: this._config.entity || '',
       title: this._config.title || '',
       show_header: this._config.show_header !== undefined ? this._config.show_header : true,
+      show_normal_status: this._config.show_normal_status !== undefined ? this._config.show_normal_status : true,
       show_normal: this._config.show_normal !== undefined ? this._config.show_normal : false,
       show_details: this._config.show_details !== undefined ? this._config.show_details : true,
       show_map: this._config.show_map !== undefined ? this._config.show_map : false,
@@ -3577,6 +4300,120 @@ class TrafikinfoSeRoadConditionCardEditor extends LitElement {
   };
 }
 
+class TrafikinfoSeTrafficFlowCardEditor extends LitElement {
+  static properties = {
+    hass: {},
+    _config: {},
+  };
+
+  static styles = css`
+    .container { padding: 8px 0 0 0; }
+    .hint {
+      margin: 2px 12px 14px;
+      padding: 10px 12px;
+      border-left: 3px solid var(--primary-color);
+      border-radius: 6px;
+      color: var(--secondary-text-color);
+      background: var(--secondary-background-color);
+      font-size: 0.85rem;
+      line-height: 1.4;
+    }
+  `;
+
+  setConfig(config) {
+    this._config = { ...config };
+  }
+
+  render() {
+    if (!this.hass || !this._config) return html``;
+    const schema = [
+      {
+        name: 'flow_entity',
+        label: this._editorText('flow_entity'),
+        required: true,
+        selector: { entity: { domain: 'sensor', integration: 'trafikinfo_se' } },
+      },
+      {
+        name: 'speed_entity',
+        label: this._editorText('speed_entity'),
+        required: true,
+        selector: { entity: { domain: 'sensor', integration: 'trafikinfo_se' } },
+      },
+      {
+        name: 'quality_entity',
+        label: this._editorText('quality_entity'),
+        required: true,
+        selector: { entity: { domain: 'sensor', integration: 'trafikinfo_se' } },
+      },
+      { name: 'title', label: this._editorText('title'), selector: { text: {} } },
+      { name: 'show_header', label: this._editorText('show_header'), selector: { boolean: {} } },
+      { name: 'show_updated', label: this._editorText('show_updated'), selector: { boolean: {} } },
+      { name: 'show_lanes', label: this._editorText('show_lanes'), selector: { boolean: {} } },
+      { name: 'severity_background', label: this._editorText('quality_background'), selector: { boolean: {} } },
+    ];
+    const data = {
+      flow_entity: this._config.flow_entity || this._config.entity || '',
+      speed_entity: this._config.speed_entity || '',
+      quality_entity: this._config.quality_entity || '',
+      title: this._config.title || '',
+      show_header: this._config.show_header !== false,
+      show_updated: this._config.show_updated !== false,
+      show_lanes: this._config.show_lanes === true,
+      severity_background: this._config.severity_background !== false,
+    };
+    return html`
+      <div class="container">
+        <div class="hint">${this._editorText('hint')}</div>
+        <ha-form
+          .hass=${this.hass}
+          .data=${data}
+          .schema=${schema}
+          .computeLabel=${(field) => field.label || field.name}
+          @value-changed=${this._valueChanged}
+        ></ha-form>
+      </div>
+    `;
+  }
+
+  _valueChanged = (event) => {
+    if (!this._config) return;
+    const next = { ...this._config, ...(event.detail?.value || {}) };
+    if (next.flow_entity) next.entity = next.flow_entity;
+    this._config = next;
+    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: this._config } }));
+  };
+
+  _editorText(key) {
+    const language = (this.hass?.locale?.language || this.hass?.language || 'en').toLowerCase();
+    const labels = {
+      en: {
+        flow_entity: 'Traffic flow entity',
+        speed_entity: 'Average speed entity',
+        quality_entity: 'Data quality entity',
+        title: 'Title',
+        show_header: 'Show header',
+        show_updated: 'Show measurement time and age',
+        show_lanes: 'Show lane details',
+        quality_background: 'Tint background by data quality',
+        hint: 'Select the three entities that belong to the same TrafficFlow measurement site.',
+      },
+      sv: {
+        flow_entity: 'Entitet för trafikflöde',
+        speed_entity: 'Entitet för medelhastighet',
+        quality_entity: 'Entitet för datakvalitet',
+        title: 'Rubrik',
+        show_header: 'Visa rubrik',
+        show_updated: 'Visa mättid och dataålder',
+        show_lanes: 'Visa körfältsdetaljer',
+        quality_background: 'Tona bakgrunden efter datakvalitet',
+        hint: 'Välj de tre entiteter som tillhör samma TrafficFlow-mätplats.',
+      },
+    };
+    const dictionary = language.startsWith('sv') ? labels.sv : labels.en;
+    return dictionary[key] || labels.en[key] || key;
+  }
+}
+
 if (!customElements.get('trafikinfo-se-alert-card-editor')) {
   customElements.define('trafikinfo-se-alert-card-editor', TrafikinfoSeAlertCardEditor);
 }
@@ -3587,6 +4424,10 @@ if (!customElements.get('trafikinfo-se-route-card-editor')) {
 
 if (!customElements.get('trafikinfo-se-road-condition-card-editor')) {
   customElements.define('trafikinfo-se-road-condition-card-editor', TrafikinfoSeRoadConditionCardEditor);
+}
+
+if (!customElements.get('trafikinfo-se-traffic-flow-card-editor')) {
+  customElements.define('trafikinfo-se-traffic-flow-card-editor', TrafikinfoSeTrafficFlowCardEditor);
 }
 
 // Register the card so it appears in the "Add card" dialog
@@ -3616,6 +4457,13 @@ window.customCards.push({
   type: 'trafikinfo-se-road-condition-card',
   name: 'Trafikinfo SE – Väglag',
   description: 'Visar Trafikverkets aktuella väglag per vägsträcka, med allvarlighetsgrad, varningar, åtgärder och valfri karta.',
+  preview: true,
+});
+
+window.customCards.push({
+  type: 'trafikinfo-se-traffic-flow-card',
+  name: 'Trafikinfo SE – Trafikflöde',
+  description: 'Visar aktuellt trafikflöde, flödesviktad medelhastighet, datakvalitet och valfria körfältsdetaljer för en TrafficFlow-mätplats.',
   preview: true,
 });
 

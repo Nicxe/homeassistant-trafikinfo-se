@@ -42,6 +42,7 @@ The card can be configured in the dashboard UI editor:
 
    - `Trafikinfo SE – Händelser (Olycka/Hinder/Vägarbete/Restriktion)`
    - `Trafikinfo SE – Restid på rutt`
+   - `Trafikinfo SE – Trafikflöde`
    - `Trafikinfo SE – Väglag`
    - `Trafikinfo SE – Viktig trafikinformation`
 
@@ -49,6 +50,7 @@ You can also use the manual card types:
 
 - `custom:trafikinfo-se-alert-card`
 - `custom:trafikinfo-se-route-card`
+- `custom:trafikinfo-se-traffic-flow-card`
 - `custom:trafikinfo-se-road-condition-card`
 - `custom:trafikinfo-se-viktig-trafikinformation-card`
 
@@ -116,13 +118,14 @@ The primary road-condition sensor has these stable states:
 Its `conditions` attribute contains the matching current road sections, sorted with the most severe condition first. Each item can include road and location text, the Trafikverket condition code and text, warnings, causes, measures, active period, distance, and WGS84 geometry. The integration controls polling at a fixed 10-minute interval to avoid unnecessary API load.
 
 ### Road-condition card
-Use `custom:trafikinfo-se-road-condition-card` with the primary Väglag sensor. The card hides normal sections by default, sorts visible sections by severity, and can show warnings, causes, measures, distance, active period, and an optional shared map. Enable **Show normal road sections** when you also want code `1` sections listed.
+Use `custom:trafikinfo-se-road-condition-card` with the primary Väglag sensor. The card hides individual normal sections by default, sorts visible sections by severity, and can show warnings, causes, measures, distance, active period, and an optional shared map. When the sensor confirms normal conditions and no hazards are present, the card shows a green **Normal road conditions** status by default. Disable **Show normal status when no hazards are found** to keep the compact text-only empty state, or enable **Show individual normal road sections** when you also want every code `1` section listed.
 
 Example:
 
 ```yaml
 type: custom:trafikinfo-se-road-condition-card
 entity: sensor.trafikinfo_se_road_condition_state
+show_normal_status: true
 show_normal: false
 show_details: true
 show_map: true
@@ -151,17 +154,24 @@ The quality sensor has the stable states `no_data`, `good`, `degraded`, `bad`, `
 
 An empty successful response is shown as `no_data`. If all returned measurements are unusable, the flow and speed sensors are `unknown` while the quality sensor explains why. Temporary network, timeout, or API failures make the entities unavailable until the next successful update, and a rejected API key starts Home Assistant's authentication recovery flow.
 
-FAS 2 intentionally uses Home Assistant's normal entity and history cards rather than adding another custom card. Add the three entities through the dashboard editor, or replace the placeholder IDs below with the actual entity IDs from your Trafikflöde entry:
+### Traffic-flow card
+Use `custom:trafikinfo-se-traffic-flow-card` to combine the three TrafficFlow sensors into one status view. The card shows current flow and speed as its main values, colors the status from the quality sensor, and can optionally show each lane detector. Measurement time, data age, and valid detector counts make it clear whether the displayed values are current and complete.
+
+The visual editor lets you select the flow, speed, and quality entities explicitly. Select three entities from the same Trafikflöde entry; the card does not guess related entities from editable entity IDs.
+
+Example:
 
 ```yaml
-type: entities
-entities:
-  - entity: sensor.replace_with_traffic_flow
-  - entity: sensor.replace_with_average_speed
-  - entity: sensor.replace_with_data_quality
+type: custom:trafikinfo-se-traffic-flow-card
+flow_entity: sensor.replace_with_traffic_flow
+speed_entity: sensor.replace_with_average_speed
+quality_entity: sensor.replace_with_data_quality
+show_lanes: false
+show_updated: true
+severity_background: true
 ```
 
-For a historical view, add the flow and speed sensors to a History graph or Statistics graph card. The source model is documented in Trafikverket's [TrafficFlow data model](https://data.trafikverket.se/documentation/datacache/data-model?namespace=Road.TrafficInfo&collection=TrafficFlow).
+The card intentionally leaves historical charting to Home Assistant. Add the flow and speed sensors to a History graph or Statistics graph card when you want a time-series view. The source model is documented in Trafikverket's [TrafficFlow data model](https://data.trafikverket.se/documentation/datacache/data-model?namespace=Road.TrafficInfo&collection=TrafficFlow).
 
 ## TravelTimeRoute support
 The integration now supports Trafikverket's `TravelTimeRoute` data model as a separate route-focused setup flow within the same integration.

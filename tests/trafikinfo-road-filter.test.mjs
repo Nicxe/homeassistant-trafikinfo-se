@@ -152,3 +152,51 @@ test('road condition card sorts by severity and can show normal sections', () =>
     ['very', 'risk', 'normal'],
   );
 });
+
+test('road condition card exposes a positive normal status by default', () => {
+  const card = new RoadConditionCard();
+  card.setConfig({ entity: 'sensor.test_road_condition' });
+  card.hass = {
+    language: 'sv',
+    states: {
+      'sensor.test_road_condition': {
+        state: 'normal',
+        attributes: {
+          conditions_total: 4,
+          hazardous_sections: 0,
+          conditions: [],
+        },
+      },
+    },
+  };
+
+  assert.equal(card.config.show_normal_status, true);
+  assert.deepEqual(card._normalStatusData(), { isNormal: true, total: 4 });
+  assert.equal(card._conditionText('normal_status'), 'Normalt väglag');
+  assert.equal(
+    card._normalStatusDetail(4),
+    '4 vägavsnitt kontrollerade – inga avvikande väglag',
+  );
+});
+
+test('road condition card does not show normal status when hazards exist', () => {
+  const card = new RoadConditionCard();
+  card.config = {
+    entity: 'sensor.test_road_condition',
+    show_normal_status: true,
+  };
+  card.hass = {
+    states: {
+      'sensor.test_road_condition': {
+        state: 'difficult',
+        attributes: {
+          conditions_total: 4,
+          hazardous_sections: 1,
+          conditions: [],
+        },
+      },
+    },
+  };
+
+  assert.deepEqual(card._normalStatusData(), { isNormal: false, total: 4 });
+});
