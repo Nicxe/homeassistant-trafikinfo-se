@@ -12,6 +12,7 @@ DOMAIN = "trafikinfo_se"
 
 CONF_ENTRY_KIND = "entry_kind"
 ENTRY_KIND_INCIDENT = "incident"
+ENTRY_KIND_ROAD_CONDITION = "road_condition"
 ENTRY_KIND_TRAVEL_TIME_ROUTE = "travel_time_route"
 
 # Frontend card resource handling
@@ -60,6 +61,7 @@ FILTER_MODE_COUNTY = "county"
 FILTER_MODE_SWEDEN = "sweden"
 
 DEFAULT_SCAN_INTERVAL = timedelta(minutes=5)
+DEFAULT_ROAD_CONDITION_SCAN_INTERVAL = timedelta(minutes=10)
 DEFAULT_TRAVEL_TIME_ROUTE_SCAN_INTERVAL = timedelta(minutes=1)
 DEFAULT_MAX_ITEMS = 25
 DEFAULT_RADIUS_KM = 25.0
@@ -76,6 +78,7 @@ DEFAULT_MESSAGE_TYPES: list[str] = [
 ]
 
 SITUATION_SCHEMA_VERSION = "1.6"
+ROAD_CONDITION_SCHEMA_VERSION = "1.3"
 TRAVEL_TIME_ROUTE_SCHEMA_VERSION = "1.6"
 
 TRAFIKVERKET_DATACACHE_URL = "https://api.trafikinfo.trafikverket.se/v2/data.xml"

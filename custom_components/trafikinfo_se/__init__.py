@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
 from time import monotonic
 from typing import TYPE_CHECKING
 
@@ -11,10 +11,10 @@ import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.util import dt as dt_util, slugify
-
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import entity_registry as er
+from homeassistant.util import dt as dt_util
+from homeassistant.util import slugify
 
 from .const import (
     ATTR_ENTRY_ID,
@@ -27,6 +27,7 @@ from .const import (
     DEFAULT_MESSAGE_TYPES,
     DOMAIN,
     ENTRY_KIND_INCIDENT,
+    ENTRY_KIND_ROAD_CONDITION,
     ENTRY_KIND_TRAVEL_TIME_ROUTE,
     SERVICE_DISMISS_EVENT,
     SERVICE_RESTORE_ALL_EVENTS,
@@ -34,6 +35,7 @@ from .const import (
 )
 from .coordinator import TrafikinfoCoordinator
 from .frontend import async_setup_frontend
+from .road_condition import RoadConditionCoordinator
 from .travel_time_route import TravelTimeRouteCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -47,6 +49,7 @@ class TrafikinfoRuntimeData:
 
     entry_kind: str
     coordinator: TrafikinfoCoordinator | None = None
+    road_condition_coordinator: RoadConditionCoordinator | None = None
     travel_time_route_coordinator: TravelTimeRouteCoordinator | None = None
 
 
@@ -91,7 +94,11 @@ def _get_dismissed_events(entry: ConfigEntry) -> dict[str, dict]:
 def _get_entry_kind(entry: ConfigEntry) -> str:
     """Return the normalized entry kind for a config entry."""
     entry_kind = str(entry.data.get(CONF_ENTRY_KIND, ENTRY_KIND_INCIDENT))
-    if entry_kind not in (ENTRY_KIND_INCIDENT, ENTRY_KIND_TRAVEL_TIME_ROUTE):
+    if entry_kind not in (
+        ENTRY_KIND_INCIDENT,
+        ENTRY_KIND_ROAD_CONDITION,
+        ENTRY_KIND_TRAVEL_TIME_ROUTE,
+    ):
         return ENTRY_KIND_INCIDENT
     return entry_kind
 
@@ -199,12 +206,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: TrafikinfoConfigEntry) -
     """Set up Trafikinfo SE from a config entry."""
     entry_kind = _get_entry_kind(entry)
     coordinator: TrafikinfoCoordinator | None = None
+    road_condition_coordinator: RoadConditionCoordinator | None = None
     route_coordinator: TravelTimeRouteCoordinator | None = None
 
     if entry_kind == ENTRY_KIND_TRAVEL_TIME_ROUTE:
         route_coordinator = TravelTimeRouteCoordinator(hass, entry)
         refresh_target = route_coordinator
         refresh_label = "travel time route coordinator"
+    elif entry_kind == ENTRY_KIND_ROAD_CONDITION:
+        road_condition_coordinator = RoadConditionCoordinator(hass, entry)
+        refresh_target = road_condition_coordinator
+        refresh_label = "road condition coordinator"
     else:
         coordinator = TrafikinfoCoordinator(hass, entry)
         refresh_target = coordinator
@@ -225,6 +237,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: TrafikinfoConfigEntry) -
             monotonic() - start,
             entry.entry_id,
         )
+    except ConfigEntryAuthFailed:
+        raise
     except Exception as ex:
         _LOGGER.debug(
             "%s first refresh failed after %.3fs (entry_id=%s): %s",
@@ -238,6 +252,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: TrafikinfoConfigEntry) -
     entry.runtime_data = TrafikinfoRuntimeData(
         entry_kind=entry_kind,
         coordinator=coordinator,
+        road_condition_coordinator=road_condition_coordinator,
         travel_time_route_coordinator=route_coordinator,
     )
 
@@ -391,6 +406,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # v7: Introduce entry_kind for incident vs TravelTimeRoute entries.
         if new_data.get(CONF_ENTRY_KIND) not in (
             ENTRY_KIND_INCIDENT,
+            ENTRY_KIND_ROAD_CONDITION,
             ENTRY_KIND_TRAVEL_TIME_ROUTE,
         ):
             if CONF_ROUTE_ID in new_data:

@@ -8,9 +8,16 @@
           "api_key": "API key"
         }
       },
+      "reauth_confirm": {
+        "title": "Reconnect Trafikinfo SE",
+        "description": "Trafikverket no longer accepts the stored API key. Enter a valid replacement key.",
+        "data": {
+          "api_key": "API key"
+        }
+      },
       "entry_kind": {
         "title": "Trafikinfo SE",
-        "description": "Choose whether this entry should track traffic incidents or travel time for one predefined Trafikverket route.",
+        "description": "Choose whether this entry should track traffic incidents, current road conditions, or travel time for one predefined Trafikverket route.",
         "data": {
           "entry_kind": "Entry type"
         }
@@ -39,7 +46,7 @@
       },
       "configure_coordinate": {
         "title": "Trafikinfo SE",
-        "description": "Filter events within a radius around a coordinate.",
+        "description": "Filter traffic information within a radius around a coordinate.",
         "data": {
           "location": "Center position",
           "radius_km": "Radius (km)",
@@ -57,7 +64,7 @@
       },
       "configure_counties": {
         "title": "Trafikinfo SE",
-        "description": "Filter events by one or more counties (or Sweden-wide).",
+        "description": "Filter traffic information by one or more counties (or Sweden-wide).",
         "data": {
           "counties": "Counties",
           "sort_location": "Reference position (for selection/sorting)",
@@ -143,6 +150,9 @@
       "missing_counties": "Select at least one county (or 'Sweden').",
       "no_routes_found": "No routes were found for the selected catalog area.",
       "unknown": "Unexpected error."
+    },
+    "abort": {
+      "reauth_successful": "The API key was updated successfully."
     }
   },
   "options": {
@@ -230,6 +240,20 @@
       },
       "traffic_status": {
         "name": "Traffic status"
+      },
+      "road_condition": {
+        "name": "Road condition",
+        "state": {
+          "no_data": "No data",
+          "normal": "Normal",
+          "difficult": "Difficult or risk",
+          "very_difficult": "Very difficult",
+          "ice_snow": "Ice and snow",
+          "unknown": "Unknown"
+        }
+      },
+      "hazardous_road_sections": {
+        "name": "Hazardous road sections"
       }
     }
   }

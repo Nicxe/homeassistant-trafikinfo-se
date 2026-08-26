@@ -33,6 +33,7 @@ after(() => rm(testDirectory, { recursive: true, force: true }));
 await import(pathToFileURL(testCardPath).href);
 
 const AlertCard = registeredElements.get('trafikinfo-se-alert-card');
+const RoadConditionCard = registeredElements.get('trafikinfo-se-road-condition-card');
 
 function event(roadNumber, roadName) {
   return {
@@ -97,4 +98,57 @@ test('unsupported wildcard forms do not match', () => {
   const events = [event('711', 'Väg 711'), event('848', 'Vallervägen (Väg 848)')];
 
   assert.deepEqual(visibleRoads('*, 7*1', events), []);
+});
+
+test('road condition card is registered and hides normal sections by default', () => {
+  assert.ok(RoadConditionCard);
+  const card = new RoadConditionCard();
+  card.config = {
+    entity: 'sensor.test_road_condition',
+    show_normal: false,
+    max_items: 0,
+  };
+  card.hass = {
+    states: {
+      'sensor.test_road_condition': {
+        state: 'ice_snow',
+        attributes: {
+          conditions: [
+            { id: 'normal', state: 'normal', condition_code: 1, road_number: '84' },
+            { id: 'snow', state: 'ice_snow', condition_code: 4, road_number: '848' },
+          ],
+        },
+      },
+    },
+  };
+
+  assert.deepEqual(card._conditionItems().map((item) => item.id), ['snow']);
+});
+
+test('road condition card sorts by severity and can show normal sections', () => {
+  const card = new RoadConditionCard();
+  card.config = {
+    entity: 'sensor.test_road_condition',
+    show_normal: true,
+    max_items: 0,
+  };
+  card.hass = {
+    states: {
+      'sensor.test_road_condition': {
+        state: 'very_difficult',
+        attributes: {
+          conditions: [
+            { id: 'normal', state: 'normal', condition_code: 1 },
+            { id: 'risk', state: 'difficult', condition_code: 2 },
+            { id: 'very', state: 'very_difficult', condition_code: 3 },
+          ],
+        },
+      },
+    },
+  };
+
+  assert.deepEqual(
+    card._conditionItems().map((item) => item.id),
+    ['very', 'risk', 'normal'],
+  );
 });

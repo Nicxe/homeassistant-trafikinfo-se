@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime
 import hashlib
 import logging
+from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 from urllib.parse import quote
 
@@ -28,16 +28,27 @@ from .__init__ import TrafikinfoConfigEntry
 from .const import (
     ATTRIBUTION,
     CONF_DISMISSED_EVENTS,
+    CONF_MESSAGE_TYPES,
     CONF_ROUTE_ID,
     CONF_ROUTE_NAME,
-    CONF_MESSAGE_TYPES,
     DEFAULT_MESSAGE_TYPES,
     DOMAIN,
+    ENTRY_KIND_ROAD_CONDITION,
     ENTRY_KIND_TRAVEL_TIME_ROUTE,
     KNOWN_TRAVEL_TIME_ROUTE_STATUSES,
     TRAFIKVERKET_ICONS_BASE_URL,
 )
 from .coordinator import TrafikinfoCoordinator, TrafikinfoData
+from .road_condition import (
+    ROAD_CONDITION_DIFFICULT,
+    ROAD_CONDITION_ICE_SNOW,
+    ROAD_CONDITION_NORMAL,
+    ROAD_CONDITION_STATES,
+    ROAD_CONDITION_VERY_DIFFICULT,
+    RoadCondition,
+    RoadConditionCoordinator,
+    RoadConditionSnapshot,
+)
 from .travel_time_route import TravelTimeRouteCoordinator, TravelTimeRouteSnapshot
 
 _LOGGER = logging.getLogger(__name__)
@@ -265,6 +276,21 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensor(s) from a config entry."""
+    if entry.runtime_data.entry_kind == ENTRY_KIND_ROAD_CONDITION:
+        coordinator = entry.runtime_data.road_condition_coordinator
+        if coordinator is None:
+            _LOGGER.error(
+                "Missing RoadCondition coordinator for entry %s", entry.entry_id
+            )
+            return
+        async_add_entities(
+            [
+                TrafikinfoRoadConditionSensor(entry, coordinator),
+                TrafikinfoRoadConditionHazardCountSensor(entry, coordinator),
+            ]
+        )
+        return
+
     if entry.runtime_data.entry_kind == ENTRY_KIND_TRAVEL_TIME_ROUTE:
         coordinator = entry.runtime_data.travel_time_route_coordinator
         if coordinator is None:
@@ -299,6 +325,204 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
+class TrafikinfoRoadConditionEntity(
+    CoordinatorEntity[RoadConditionCoordinator], SensorEntity
+):
+    """Base entity for Trafikverket RoadCondition data."""
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        coordinator: RoadConditionCoordinator,
+        *,
+        key: str,
+        translation_key: str,
+        icon: str,
+    ) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_road_condition_{key}"
+        self._attr_translation_key = translation_key
+        self._attr_icon = icon
+        self._attr_suggested_object_id = f"{DOMAIN}_road_condition_{key}"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, f"{self._entry.entry_id}_road_condition")},
+            entry_type=DeviceEntryType.SERVICE,
+            name=self._entry.title,
+            manufacturer="Trafikverket",
+            model="Väglag",
+        )
+
+    @property
+    def _snapshot(self) -> RoadConditionSnapshot | None:
+        return self.coordinator.data
+
+
+class TrafikinfoRoadConditionSensor(TrafikinfoRoadConditionEntity):
+    """Primary enum sensor for the worst current road condition."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _unrecorded_attributes = frozenset({"conditions"})
+    _event_name = f"{DOMAIN}_road_condition"
+
+    def __init__(
+        self, entry: ConfigEntry, coordinator: RoadConditionCoordinator
+    ) -> None:
+        super().__init__(
+            entry,
+            coordinator,
+            key="state",
+            translation_key="road_condition",
+            icon="mdi:road-variant",
+        )
+        self._diff_initialized = False
+        self._last_hazard_signatures: dict[str, str] = {}
+
+    @property
+    def native_value(self) -> str | None:
+        snapshot = self._snapshot
+        return snapshot.worst_state if snapshot is not None else None
+
+    @property
+    def options(self) -> list[str]:
+        return list(ROAD_CONDITION_STATES)
+
+    @property
+    def icon(self) -> str:
+        state = self.native_value
+        if state == ROAD_CONDITION_NORMAL:
+            return "mdi:road-variant"
+        if state == ROAD_CONDITION_DIFFICULT:
+            return "mdi:weather-partly-snowy-rainy"
+        if state == ROAD_CONDITION_VERY_DIFFICULT:
+            return "mdi:alert-octagon-outline"
+        if state == ROAD_CONDITION_ICE_SNOW:
+            return "mdi:snowflake-alert"
+        return "mdi:road-variant"
+
+    def _condition_dict(self, condition: RoadCondition) -> dict[str, Any]:
+        return condition.as_dict(distance_km=self.coordinator.distance_km(condition))
+
+    def _maybe_fire_events(self) -> None:
+        snapshot = self._snapshot
+        if snapshot is None:
+            return
+        hazards = {
+            condition.condition_id: condition
+            for condition in snapshot.conditions
+            if condition.is_hazardous
+        }
+        signatures = {
+            condition_id: condition.signature()
+            for condition_id, condition in hazards.items()
+        }
+        if not self._diff_initialized:
+            self._diff_initialized = True
+            self._last_hazard_signatures = signatures
+            return
+
+        previous = self._last_hazard_signatures
+        received_at = dt_util.utcnow().isoformat(timespec="seconds")
+        for condition_id, signature in signatures.items():
+            if previous.get(condition_id) == signature:
+                continue
+            condition = hazards[condition_id]
+            self.hass.bus.async_fire(
+                self._event_name,
+                {
+                    "entry_id": self._entry.entry_id,
+                    "entry_title": self._entry.title,
+                    "entity_id": getattr(self, "entity_id", None),
+                    "condition_id": condition_id,
+                    "change_type": "added"
+                    if condition_id not in previous
+                    else "updated",
+                    "received_at": received_at,
+                    "condition": self._condition_dict(condition),
+                },
+            )
+        self._last_hazard_signatures = signatures
+
+    def _handle_coordinator_update(self) -> None:
+        self._maybe_fire_events()
+        super()._handle_coordinator_update()
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        snapshot = self._snapshot
+        attributes: dict[str, Any] = {
+            "attribution": ATTRIBUTION,
+            "conditions_total": 0,
+            "hazardous_sections": 0,
+            "max_items": self.coordinator.max_items,
+            "filter_mode": self.coordinator.filter_mode,
+            "counties": self.coordinator.counties,
+            "filter_roads": self.coordinator.filter_roads,
+            "latitude": self.coordinator.latitude,
+            "longitude": self.coordinator.longitude,
+            "radius_km": self.coordinator.radius_km,
+            "last_modified": None,
+            "last_change_id": None,
+            "conditions": [],
+        }
+        if snapshot is None:
+            return attributes
+
+        max_items = max(0, self.coordinator.max_items)
+        selected = snapshot.conditions[:max_items] if max_items else []
+        attributes.update(
+            {
+                "conditions_total": snapshot.total_count,
+                "hazardous_sections": snapshot.hazardous_count,
+                "last_modified": _datetime_attr(snapshot.last_modified),
+                "last_change_id": snapshot.last_change_id,
+                "conditions": [
+                    self._condition_dict(condition) for condition in selected
+                ],
+            }
+        )
+        return attributes
+
+
+class TrafikinfoRoadConditionHazardCountSensor(TrafikinfoRoadConditionEntity):
+    """Number of non-normal RoadCondition sections."""
+
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(
+        self, entry: ConfigEntry, coordinator: RoadConditionCoordinator
+    ) -> None:
+        super().__init__(
+            entry,
+            coordinator,
+            key="hazardous_sections",
+            translation_key="hazardous_road_sections",
+            icon="mdi:alert-circle-outline",
+        )
+
+    @property
+    def native_value(self) -> int | None:
+        snapshot = self._snapshot
+        return snapshot.hazardous_count if snapshot is not None else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        snapshot = self._snapshot
+        return {
+            "attribution": ATTRIBUTION,
+            "conditions_total": snapshot.total_count if snapshot else 0,
+            "last_modified": _datetime_attr(snapshot.last_modified)
+            if snapshot
+            else None,
+        }
+
+
 class TrafikinfoTravelTimeRouteEntity(
     CoordinatorEntity[TravelTimeRouteCoordinator], SensorEntity
 ):
@@ -318,7 +542,9 @@ class TrafikinfoTravelTimeRouteEntity(
     ) -> None:
         super().__init__(coordinator)
         self._entry = entry
-        self._route_id = str(entry.data.get(CONF_ROUTE_ID, coordinator.route_id)).strip()
+        self._route_id = str(
+            entry.data.get(CONF_ROUTE_ID, coordinator.route_id)
+        ).strip()
         route_name = entry.data.get(CONF_ROUTE_NAME) or entry.title or self._route_id
         self._route_name = str(route_name).strip() or self._route_id
         self._attr_unique_id = (

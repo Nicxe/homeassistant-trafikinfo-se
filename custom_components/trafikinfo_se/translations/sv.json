@@ -8,9 +8,16 @@
           "api_key": "API-nyckel"
         }
       },
+      "reauth_confirm": {
+        "title": "Återanslut Trafikinfo SE",
+        "description": "Trafikverket godkänner inte längre den sparade API-nyckeln. Ange en giltig ersättningsnyckel.",
+        "data": {
+          "api_key": "API-nyckel"
+        }
+      },
       "entry_kind": {
         "title": "Trafikinfo SE",
-        "description": "Välj om den här posten ska följa trafikhändelser eller restid för en fördefinierad Trafikverket-rutt.",
+        "description": "Välj om den här posten ska följa trafikhändelser, aktuellt väglag eller restid för en fördefinierad Trafikverket-rutt.",
         "data": {
           "entry_kind": "Typ av post"
         }
@@ -39,13 +46,13 @@
       },
       "configure_coordinate": {
         "title": "Trafikinfo SE",
-        "description": "Filtrera händelser inom en radie runt en koordinat.",
+        "description": "Filtrera trafikinformation inom en radie runt en koordinat.",
         "data": {
           "location": "Centrumposition",
           "radius_km": "Radie (km)",
           "filter_roads": "Vägfilter (vägnummer/namn)",
           "name": "Namn",
-          "max_items": "Max antal händelser i attribut",
+          "max_items": "Max antal poster i attribut",
           "sort_mode": "Urval / sortering",
           "message_types": "Meddelandetyper (kategorier)",
           "road_filter_safety_bypass": "Kringgå vägfilter för säkerhetsrelaterade meddelanden"
@@ -57,13 +64,13 @@
       },
       "configure_counties": {
         "title": "Trafikinfo SE",
-        "description": "Filtrera händelser på ett eller flera län (eller hela Sverige).",
+        "description": "Filtrera trafikinformation på ett eller flera län (eller hela Sverige).",
         "data": {
           "counties": "Län",
           "sort_location": "Referensposition (för urval/sortering)",
           "filter_roads": "Vägfilter (vägnummer/namn)",
           "name": "Namn",
-          "max_items": "Max antal händelser i attribut",
+          "max_items": "Max antal poster i attribut",
           "sort_mode": "Urval / sortering",
           "message_types": "Meddelandetyper (kategorier)",
           "road_filter_safety_bypass": "Kringgå vägfilter för säkerhetsrelaterade meddelanden"
@@ -107,7 +114,7 @@
           "radius_km": "Radie (km)",
           "filter_roads": "Vägfilter (vägnummer/namn)",
           "name": "Namn",
-          "max_items": "Max antal händelser i attribut",
+          "max_items": "Max antal poster i attribut",
           "sort_mode": "Urval / sortering",
           "message_types": "Meddelandetyper (kategorier)",
           "road_filter_safety_bypass": "Kringgå vägfilter för säkerhetsrelaterade meddelanden"
@@ -125,7 +132,7 @@
           "sort_location": "Referensposition (för urval/sortering)",
           "filter_roads": "Vägfilter (vägnummer/namn)",
           "name": "Namn",
-          "max_items": "Max antal händelser i attribut",
+          "max_items": "Max antal poster i attribut",
           "sort_mode": "Urval / sortering",
           "message_types": "Meddelandetyper (kategorier)",
           "road_filter_safety_bypass": "Kringgå vägfilter för säkerhetsrelaterade meddelanden"
@@ -143,6 +150,9 @@
       "missing_counties": "Välj minst ett län (eller 'Hela Sverige').",
       "no_routes_found": "Inga rutter hittades för det valda katalogområdet.",
       "unknown": "Oväntat fel."
+    },
+    "abort": {
+      "reauth_successful": "API-nyckeln uppdaterades."
     }
   },
   "options": {
@@ -162,7 +172,7 @@
           "radius_km": "Radie (km)",
           "filter_roads": "Vägfilter (vägnummer/namn)",
           "name": "Namn",
-          "max_items": "Max antal händelser i attribut",
+          "max_items": "Max antal poster i attribut",
           "sort_mode": "Urval / sortering",
           "message_types": "Meddelandetyper (kategorier)",
           "road_filter_safety_bypass": "Kringgå vägfilter för säkerhetsrelaterade meddelanden"
@@ -180,7 +190,7 @@
           "sort_location": "Referensposition (för urval/sortering)",
           "filter_roads": "Vägfilter (vägnummer/namn)",
           "name": "Namn",
-          "max_items": "Max antal händelser i attribut",
+          "max_items": "Max antal poster i attribut",
           "sort_mode": "Urval / sortering",
           "message_types": "Meddelandetyper (kategorier)",
           "road_filter_safety_bypass": "Kringgå vägfilter för säkerhetsrelaterade meddelanden"
@@ -230,6 +240,20 @@
       },
       "traffic_status": {
         "name": "Trafikstatus"
+      },
+      "road_condition": {
+        "name": "Väglag",
+        "state": {
+          "no_data": "Ingen data",
+          "normal": "Normalt",
+          "difficult": "Besvärligt eller risk",
+          "very_difficult": "Mycket besvärligt",
+          "ice_snow": "Is och snö",
+          "unknown": "Okänt"
+        }
+      },
+      "hazardous_road_sections": {
+        "name": "Avvikande vägsträckor"
       }
     }
   }

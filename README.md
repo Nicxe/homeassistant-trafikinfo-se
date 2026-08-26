@@ -26,6 +26,7 @@ You can also add the repository manually in HACS as type **Integration**.
 The alert card is bundled with this integration.
 
 When the integration starts, it automatically:
+
 - syncs the bundled card to `config/www/trafikinfo-se-alert-card.js`
 - creates or updates a Lovelace `module` resource at `/local/trafikinfo-se-alert-card.js?v=...` for cache-busting
 
@@ -38,17 +39,21 @@ The card can be configured in the dashboard UI editor:
 2. Select **Edit dashboard**.
 3. Add a new card.
 4. Search for and select one of:
+
    - `Trafikinfo SE – Händelser (Olycka/Hinder/Vägarbete/Restriktion)`
-   - `Trafikinfo SE – Restider`
+   - `Trafikinfo SE – Restid på rutt`
+   - `Trafikinfo SE – Väglag`
    - `Trafikinfo SE – Viktig trafikinformation`
 
 You can also use the manual card types:
+
 - `custom:trafikinfo-se-alert-card`
 - `custom:trafikinfo-se-route-card`
+- `custom:trafikinfo-se-road-condition-card`
 - `custom:trafikinfo-se-viktig-trafikinformation-card`
 
 ### Map configuration
-Maps in the incident and route cards use OpenStreetMap by default and include the required attribution. The same optional tile-provider settings are available in both card editors:
+Maps in the incident, route, and road-condition cards use OpenStreetMap by default and include the required attribution. The same optional tile-provider settings are available in all three card editors:
 
 - **Custom map tile URL**: HTTPS or same-origin URL containing `{z}`, `{x}`, and `{y}`
 - **Custom map tile attribution**: attribution required by the selected provider
@@ -81,6 +86,47 @@ If needed, add it manually via **Settings > Devices & Services > Add Integration
 - Restriktioner
 - Trafikmeddelande
 - Vägarbete
+- Väglag (worst current condition in the selected area)
+- Avvikande vägsträckor (number of sections with a condition code above normal)
+
+## RoadCondition support (phase 1)
+Road conditions are available as a separate setup type called **Väglag**. This uses Trafikverket's `Road.TrafficInfo/RoadCondition` model to show the assessed condition of road sections, including warnings, causes, and reported maintenance measures.
+
+This is deliberately not a copy of Home Assistant's native [Trafikverket Weather Station](https://www.home-assistant.io/integrations/trafikverket_weatherstation/) or [Trafikverket Camera](https://www.home-assistant.io/integrations/trafikverket_camera/) integrations. Those integrations expose measurements and camera images from individual stations. Trafikinfo SE instead reports Trafikverket's current, section-level road-condition assessment.
+
+When adding a Väglag entry, choose one of these scopes:
+
+- a coordinate and radius
+- one or more counties, or all of Sweden
+
+An optional road filter can narrow the result further. Numeric road filters are exact, so `84` does not include road `848`. Add a trailing wildcard when a prefix is intended, for example `84*`. Spaces in numbered roads are normalized, so `E45` matches Trafikverket's `E 45`, and a value such as `570` also matches a named road value containing `väg 570`.
+
+The primary road-condition sensor has these stable states:
+
+- `no_data`
+- `normal`
+- `difficult`
+- `very_difficult`
+- `ice_snow`
+- `unknown`
+
+Its `conditions` attribute contains the matching current road sections, sorted with the most severe condition first. Each item can include road and location text, the Trafikverket condition code and text, warnings, causes, measures, active period, distance, and WGS84 geometry. The integration controls polling at a fixed 10-minute interval to avoid unnecessary API load.
+
+### Road-condition card
+Use `custom:trafikinfo-se-road-condition-card` with the primary Väglag sensor. The card hides normal sections by default, sorts visible sections by severity, and can show warnings, causes, measures, distance, active period, and an optional shared map. Enable **Show normal road sections** when you also want code `1` sections listed.
+
+Example:
+
+```yaml
+type: custom:trafikinfo-se-road-condition-card
+entity: sensor.trafikinfo_se_road_condition_state
+show_normal: false
+show_details: true
+show_map: true
+```
+
+### Empty data and errors
+An empty but successful API response is reported as `no_data`; it is not treated as a failure. Temporary network, timeout, or Trafikverket API errors make the entities unavailable until the coordinator's next successful retry. A missing or rejected API key starts Home Assistant's authentication recovery flow instead of silently returning empty data. Home Assistant logs include an actionable error without logging the API key.
 
 ## TravelTimeRoute support
 The integration now supports Trafikverket's `TravelTimeRoute` data model as a separate route-focused setup flow within the same integration.
@@ -112,14 +158,15 @@ The route card can show:
 
 The map is optional and intended for the detailed card view.
 
-
-
 ## Automation triggers (event bus)
 For sensors **Hinder** and **Olycka**, the integration emits one event per new or updated incident:
+
 - `trafikinfo_se_hinder_incident`
 - `trafikinfo_se_olycka_incident`
 
 Each event includes fields such as `incident_key`, `change_type`, `message_type`, `incident`, and `received_at`.
+
+For a Väglag entry, the integration emits `trafikinfo_se_road_condition` when a hazardous road section is new or its reported condition changes after the initial data load. The event includes the config entry ID, change type, the complete condition item, and `received_at`. The initial load establishes a baseline and does not emit historical conditions as new events.
 
 ## Release assets and versioning
 Each GitHub release in this repository publishes:
@@ -144,4 +191,3 @@ If you previously used `homeassistant-trafikinfo-se-card`, see [MIGRATION.md](./
 <img width="1157" height="587" alt="trafikinfo alert card" src="https://github.com/user-attachments/assets/af609e0f-ca1e-4445-bb04-9cf681b1f0fb" />
 
 <img width="578" height="784" alt="CleanShot 2026-03-20 at 15 32 33" src="https://github.com/user-attachments/assets/95d61f2b-42ce-45ca-bad1-29d844979ee5" />
-

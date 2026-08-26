@@ -2618,6 +2618,389 @@ class TrafikinfoSeRouteCard extends TrafikinfoSeAlertCard {
   }
 }
 
+class TrafikinfoSeRoadConditionCard extends TrafikinfoSeAlertCard {
+  static styles = [
+    TrafikinfoSeAlertCard.styles,
+    css`
+      .condition-card {
+        grid-template-columns: auto minmax(0, 1fr);
+      }
+      .condition-card.condition-normal { --trafikinfo-accent: var(--success-color, #2e7d32); }
+      .condition-card.condition-difficult { --trafikinfo-accent: var(--warning-color, #f9a825); }
+      .condition-card.condition-very-difficult { --trafikinfo-accent: var(--error-color, #c62828); }
+      .condition-card.condition-ice-snow { --trafikinfo-accent: #1976d2; }
+      .condition-card.condition-unknown { --trafikinfo-accent: var(--primary-color); }
+      .condition-icon {
+        color: var(--trafikinfo-accent);
+        width: 30px;
+        height: 30px;
+      }
+      .condition-summary {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .condition-title {
+        font-size: 1.02em;
+        font-weight: 700;
+        overflow-wrap: anywhere;
+      }
+      .condition-state {
+        color: var(--trafikinfo-accent);
+        font-weight: 600;
+      }
+      .condition-details {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        margin-top: 3px;
+      }
+    `,
+  ];
+
+  setConfig(config) {
+    if (!config?.entity) throw new Error('You must specify a road condition entity.');
+    const normalized = { ...config };
+    if (normalized.show_header === undefined) normalized.show_header = true;
+    if (normalized.show_normal === undefined) normalized.show_normal = false;
+    if (normalized.show_details === undefined) normalized.show_details = true;
+    if (normalized.show_map === undefined) normalized.show_map = false;
+    if (normalized.max_items === undefined) normalized.max_items = 0;
+    if (normalized.map_zoom_controls === undefined) normalized.map_zoom_controls = true;
+    if (normalized.map_scroll_wheel === undefined) normalized.map_scroll_wheel = false;
+    normalizeMapTileConfig(normalized);
+    if (normalized.map_zoom === '' || normalized.map_zoom === null || normalized.map_zoom === undefined) {
+      normalized.map_zoom = null;
+    } else {
+      const zoom = Number(normalized.map_zoom);
+      normalized.map_zoom = Number.isFinite(zoom)
+        ? Math.max(0, Math.min(normalized.map_tile_max_zoom, zoom))
+        : null;
+    }
+    const tileConfigChanged = this.config
+      && (
+        this.config.map_tile_url !== normalized.map_tile_url
+        || this.config.map_tile_attribution !== normalized.map_tile_attribution
+        || this.config.map_tile_max_zoom !== normalized.map_tile_max_zoom
+      );
+    if (tileConfigChanged) this._clearMaps();
+    this.config = normalized;
+  }
+
+  static getConfigElement() {
+    return document.createElement('trafikinfo-se-road-condition-card-editor');
+  }
+
+  static getStubConfig(hass, entities) {
+    const suggested = (entities || []).find((entityId) => {
+      const stateObj = hass?.states?.[entityId];
+      return entityId?.startsWith('sensor.') && Array.isArray(stateObj?.attributes?.conditions);
+    }) || '';
+    return {
+      entity: suggested,
+      title: '',
+      show_header: true,
+      show_normal: false,
+      show_details: true,
+      show_map: false,
+      max_items: 0,
+      map_zoom: null,
+      map_zoom_controls: true,
+      map_scroll_wheel: false,
+      map_tile_url: '',
+      map_tile_attribution: '',
+      map_tile_max_zoom: DEFAULT_MAP_TILE_MAX_ZOOM,
+    };
+  }
+
+  shouldUpdate(changed) {
+    if (changed.has('config')) return true;
+    if (changed.has('hass')) {
+      const stateObj = this._stateObj();
+      const key = JSON.stringify([
+        stateObj?.state,
+        stateObj?.attributes?.conditions_total,
+        stateObj?.attributes?.hazardous_sections,
+        stateObj?.attributes?.last_modified,
+        stateObj?.attributes?.conditions,
+      ]);
+      if (this._lastConditionKey !== key) {
+        this._lastConditionKey = key;
+        return true;
+      }
+      return false;
+    }
+    return true;
+  }
+
+  updated() {
+    this._scheduleMapInit(() => this._maybeInitConditionMap());
+  }
+
+  getCardSize() {
+    const items = this._conditionItems();
+    const base = (this._showHeader() ? 1 : 0) + Math.max(items.length, 1);
+    const hasMap = this.config?.show_map === true
+      && items.some((item) => String(item.geometry_wgs84 || '').trim());
+    return hasMap ? base + 2 : base;
+  }
+
+  render() {
+    if (!this.hass || !this.config) return html``;
+    const stateObj = this._stateObj();
+    const items = this._conditionItems();
+    const header = this._showHeader()
+      ? (this.config.title || stateObj?.attributes?.friendly_name || this._conditionText('road_condition'))
+      : undefined;
+    const mapItems = items.filter((item) => String(item.geometry_wgs84 || '').trim());
+    const showMap = this.config.show_map === true && mapItems.length > 0;
+    const mapKey = `${this.config.entity}-road-condition`;
+    const mapId = `trafikinfo-condition-map-${this._sanitizeDomId(mapKey)}`;
+    const statusId = `trafikinfo-condition-map-status-${this._sanitizeDomId(mapKey)}`;
+
+    if (!stateObj || ['unknown', 'unavailable'].includes(stateObj.state)) {
+      return html`<ha-card .header=${header}><div class="empty">${this._conditionText('unavailable')}</div></ha-card>`;
+    }
+    if (items.length === 0) {
+      const total = Number(stateObj.attributes?.conditions_total || 0);
+      const message = total > 0 && this.config.show_normal !== true
+        ? this._conditionText('no_hazards')
+        : this._conditionText('no_data');
+      return html`<ha-card .header=${header}><div class="empty">${message}</div></ha-card>`;
+    }
+
+    return html`
+      <ha-card .header=${header}>
+        <div class="alerts">
+          ${items.map((item) => this._renderCondition(item))}
+          ${showMap ? html`
+            <div
+              class="map-wrap"
+              @pointerdown=${(event) => event.stopPropagation()}
+              @pointerup=${(event) => event.stopPropagation()}
+              @click=${(event) => event.stopPropagation()}
+            >
+              <div id=${statusId} class="map-status show">${this._t('map_loading')}</div>
+              <div id=${mapId} class="geo-map" data-map-key=${mapKey}></div>
+            </div>
+          ` : html``}
+        </div>
+      </ha-card>
+    `;
+  }
+
+  _conditionItems() {
+    const conditions = this._stateObj()?.attributes?.conditions;
+    const items = Array.isArray(conditions) ? conditions.filter((item) => item && typeof item === 'object') : [];
+    const visible = this.config?.show_normal === true
+      ? items
+      : items.filter((item) => Number(item.condition_code) !== 1 && item.state !== 'normal');
+    const sorted = [...visible].sort((left, right) => {
+      const severity = Number(right.condition_code || 0) - Number(left.condition_code || 0);
+      if (severity !== 0) return severity;
+      return String(left.road_number || left.location_text || left.id || '')
+        .localeCompare(String(right.road_number || right.location_text || right.id || ''));
+    });
+    const maxItems = Number(this.config?.max_items || 0);
+    return Number.isInteger(maxItems) && maxItems > 0 ? sorted.slice(0, maxItems) : sorted;
+  }
+
+  _renderCondition(item) {
+    const road = item.road_number || (item.road_number_numeric ? String(item.road_number_numeric) : null);
+    const headline = [road, item.location_text].filter(Boolean).join(' · ') || this._conditionText('road_condition');
+    const details = [
+      [this._conditionText('warnings'), item.warnings],
+      [this._conditionText('causes'), item.causes],
+      [this._conditionText('measures'), item.measures],
+      [this._conditionText('information'), item.condition_info],
+    ].filter(([, value]) => Array.isArray(value) && value.length > 0);
+    return html`
+      <div class="alert condition-card ${this._conditionClass(item)} bg-severity">
+        <ha-icon class="condition-icon" icon=${this._conditionIcon(item)}></ha-icon>
+        <div class="content condition-summary">
+          <div class="condition-title">${headline}</div>
+          <div class="condition-state">${item.condition_text || this._conditionStateLabel(item.state)}</div>
+          <div class="meta">
+            ${item.distance_km !== null && item.distance_km !== undefined
+              ? html`<span><b>${this._conditionText('distance')}:</b> ${item.distance_km} km</span>`
+              : html``}
+            ${item.start_time || item.end_time
+              ? html`<span><b>${this._t('period')}:</b> ${this._formatDate(item.start_time)} – ${item.end_time ? this._formatDate(item.end_time) : this._t('until_further_notice')}</span>`
+              : html``}
+          </div>
+          ${this.config.show_details !== false && details.length > 0 ? html`
+            <div class="condition-details">
+              ${details.map(([label, value]) => html`<div><b>${label}:</b> ${value.join(', ')}</div>`)}
+            </div>
+          ` : html``}
+        </div>
+      </div>
+    `;
+  }
+
+  _conditionClass(item) {
+    if (Number(item?.condition_code) === 1 || item?.state === 'normal') return 'condition-normal';
+    if (Number(item?.condition_code) === 2 || item?.state === 'difficult') return 'condition-difficult';
+    if (Number(item?.condition_code) === 3 || item?.state === 'very_difficult') return 'condition-very-difficult';
+    if (Number(item?.condition_code) === 4 || item?.state === 'ice_snow') return 'condition-ice-snow';
+    return 'condition-unknown';
+  }
+
+  _conditionIcon(item) {
+    if (Number(item?.condition_code) === 1 || item?.state === 'normal') return 'mdi:road-variant';
+    if (Number(item?.condition_code) === 4 || item?.state === 'ice_snow') return 'mdi:snowflake-alert';
+    if (Number(item?.condition_code) >= 3 || item?.state === 'very_difficult') return 'mdi:alert-octagon-outline';
+    if (Number(item?.condition_code) === 2 || item?.state === 'difficult') return 'mdi:weather-partly-snowy-rainy';
+    return 'mdi:road-variant';
+  }
+
+  _conditionStateLabel(state) {
+    const labels = {
+      no_data: this._conditionText('no_data'),
+      normal: this._conditionText('normal'),
+      difficult: this._conditionText('difficult'),
+      very_difficult: this._conditionText('very_difficult'),
+      ice_snow: this._conditionText('ice_snow'),
+      unknown: this._t('unknown'),
+    };
+    return labels[state] || this._t('unknown');
+  }
+
+  _conditionText(key) {
+    const lang = (this.hass?.language || this.hass?.locale?.language || 'en').toLowerCase();
+    const labels = {
+      en: {
+        road_condition: 'Road condition',
+        no_data: 'No road condition data in the selected area',
+        no_hazards: 'No hazardous road conditions',
+        unavailable: 'Road condition data is unavailable',
+        normal: 'Normal',
+        difficult: 'Difficult or risk',
+        very_difficult: 'Very difficult',
+        ice_snow: 'Ice and snow',
+        warnings: 'Warnings',
+        causes: 'Causes',
+        measures: 'Measures',
+        information: 'Information',
+        distance: 'Distance',
+      },
+      sv: {
+        road_condition: 'Väglag',
+        no_data: 'Ingen väglagsdata i det valda området',
+        no_hazards: 'Inga avvikande väglag',
+        unavailable: 'Väglagsdata är inte tillgänglig',
+        normal: 'Normalt',
+        difficult: 'Besvärligt eller risk',
+        very_difficult: 'Mycket besvärligt',
+        ice_snow: 'Is och snö',
+        warnings: 'Varningar',
+        causes: 'Orsaker',
+        measures: 'Åtgärder',
+        information: 'Information',
+        distance: 'Avstånd',
+      },
+    };
+    const dict = lang.startsWith('sv') ? labels.sv : labels.en;
+    return dict[key] || labels.en[key] || key;
+  }
+
+  _conditionMapStyle(item) {
+    const colors = {
+      1: 'var(--success-color, #2e7d32)',
+      2: 'var(--warning-color, #f9a825)',
+      3: 'var(--error-color, #c62828)',
+      4: '#1976d2',
+    };
+    const accent = colors[Number(item?.condition_code)] || 'var(--primary-color)';
+    return { color: accent, fillColor: accent, weight: 5, opacity: 0.95, fillOpacity: 0.2 };
+  }
+
+  _maybeInitConditionMap() {
+    if (!this.renderRoot) return;
+    const items = this._conditionItems().filter((item) => String(item.geometry_wgs84 || '').trim());
+    const showMap = this.config?.show_map === true && items.length > 0;
+    const key = `${this.config?.entity || 'trafikinfo'}-road-condition`;
+    const activeKeys = new Set();
+    if (showMap) {
+      const mapId = `trafikinfo-condition-map-${this._sanitizeDomId(key)}`;
+      const element = this.renderRoot.querySelector(`#${mapId}`);
+      if (element) {
+        activeKeys.add(key);
+        this._ensureLeafletAndRenderConditionCollection(key, element, items).catch(() => {
+          const status = this.renderRoot?.querySelector?.(`#trafikinfo-condition-map-status-${this._sanitizeDomId(key)}`);
+          if (status) {
+            status.textContent = this._t('map_failed');
+            status.classList.add('show');
+          }
+        });
+      }
+    }
+    for (const [mapKey, entry] of this._maps.entries()) {
+      if (activeKeys.has(mapKey)) continue;
+      try { entry?.map?.remove?.(); } catch (error) {}
+      this._maps.delete(mapKey);
+    }
+  }
+
+  async _ensureLeafletAndRenderConditionCollection(key, container, items) {
+    this._ensureLeafletCssInShadowRoot();
+    const statusId = `trafikinfo-condition-map-status-${this._sanitizeDomId(key)}`;
+    if (!(window.L && window.L.map)) this._setMapStatusKey(statusId, 'map_loading_leaflet');
+    const L = await this._ensureLeaflet();
+    if (!L) return;
+    const segments = items
+      .map((item) => ({ ...item, points: this._wktLonLatPoints(item.geometry_wgs84) }))
+      .filter((item) => item.points.length > 0);
+    if (segments.length === 0) {
+      this._setMapStatusKey(statusId, 'map_failed');
+      return;
+    }
+    const signature = segments
+      .map((item) => `${item.id}:${item.condition_code}:${item.geometry_wgs84}`)
+      .join('|');
+    const mapZoom = Number.isFinite(this.config?.map_zoom) ? this.config.map_zoom : null;
+    const zoomKey = mapZoom === null ? 'auto' : String(mapZoom);
+    const current = this._maps.get(key);
+    if (current?.container && current.container !== container) {
+      try { current.map.remove(); } catch (error) {}
+      this._maps.delete(key);
+    }
+    let entry = this._maps.get(key);
+    if (!entry) entry = this._createMapEntry(L, key, container, statusId);
+    entry.statusId = statusId;
+    let layerUpdated = false;
+    if (entry.sig !== signature) {
+      entry.renderPending = true;
+      this._refreshMapStatus(entry);
+      try { entry.layer?.remove?.(); } catch (error) {}
+      const layers = segments.map((item) => {
+        const style = this._conditionMapStyle(item);
+        return item.points.length === 1
+          ? L.circleMarker(item.points[0], { ...style, radius: 8 })
+          : L.polyline(item.points, style);
+      });
+      entry.layer = L.featureGroup(layers).addTo(entry.map);
+      entry.sig = signature;
+      layerUpdated = true;
+    }
+    if (layerUpdated || entry.zoomKey !== zoomKey) {
+      try {
+        const bounds = entry.layer?.getBounds?.();
+        if (bounds?.isValid?.()) {
+          if (mapZoom !== null) entry.map.setView(bounds.getCenter(), mapZoom);
+          else entry.map.fitBounds(bounds, { padding: [12, 12] });
+        }
+      } catch (error) {}
+      entry.zoomKey = zoomKey;
+      requestAnimationFrame(() => {
+        try { entry.map.invalidateSize(); } catch (error) {}
+      });
+    }
+    entry.renderPending = false;
+    this._refreshMapStatus(entry);
+  }
+}
+
 if (!customElements.get('trafikinfo-se-alert-card')) {
   customElements.define('trafikinfo-se-alert-card', TrafikinfoSeAlertCard);
 }
@@ -2628,6 +3011,10 @@ if (!customElements.get('trafikinfo-se-viktig-trafikinformation-card')) {
 
 if (!customElements.get('trafikinfo-se-route-card')) {
   customElements.define('trafikinfo-se-route-card', TrafikinfoSeRouteCard);
+}
+
+if (!customElements.get('trafikinfo-se-road-condition-card')) {
+  customElements.define('trafikinfo-se-road-condition-card', TrafikinfoSeRoadConditionCard);
 }
 
 class TrafikinfoSeAlertCardEditor extends LitElement {
@@ -3124,12 +3511,82 @@ class TrafikinfoSeRouteCardEditor extends LitElement {
   _computeLabel = (schema) => schema.label || schema.name;
 }
 
+class TrafikinfoSeRoadConditionCardEditor extends LitElement {
+  static properties = {
+    hass: {},
+    _config: {},
+  };
+
+  static styles = css`
+    .container { padding: 8px 0 0 0; }
+  `;
+
+  setConfig(config) {
+    this._config = { ...config };
+  }
+
+  render() {
+    if (!this.hass || !this._config) return html``;
+    const schema = [
+      { name: 'entity', label: 'Entity', required: true, selector: { entity: { domain: 'sensor', integration: 'trafikinfo_se' } } },
+      { name: 'title', label: 'Title', selector: { text: {} } },
+      { name: 'show_header', label: 'Show header', selector: { boolean: {} } },
+      { name: 'show_normal', label: 'Show normal road sections', selector: { boolean: {} } },
+      { name: 'show_details', label: 'Show warnings, causes, and measures', selector: { boolean: {} } },
+      { name: 'show_map', label: 'Show map', selector: { boolean: {} } },
+      { name: 'max_items', label: 'Max items (0 = all)', selector: { number: { min: 0, max: 200, mode: 'box' } } },
+      { name: 'map_zoom', label: 'Map zoom level (empty = automatic)', selector: { number: { min: 0, max: 18, mode: 'box' } } },
+      { name: 'map_zoom_controls', label: 'Map zoom controls (+/−)', selector: { boolean: {} } },
+      { name: 'map_scroll_wheel', label: 'Map scroll wheel zoom', selector: { boolean: {} } },
+      { name: 'map_tile_url', label: 'Custom map tile URL', selector: { text: {} } },
+      { name: 'map_tile_attribution', label: 'Custom map tile attribution', selector: { text: {} } },
+      { name: 'map_tile_max_zoom', label: 'Map tile maximum zoom', selector: { number: { min: 0, max: MAX_MAP_TILE_MAX_ZOOM, mode: 'box' } } },
+    ];
+    const data = {
+      entity: this._config.entity || '',
+      title: this._config.title || '',
+      show_header: this._config.show_header !== undefined ? this._config.show_header : true,
+      show_normal: this._config.show_normal !== undefined ? this._config.show_normal : false,
+      show_details: this._config.show_details !== undefined ? this._config.show_details : true,
+      show_map: this._config.show_map !== undefined ? this._config.show_map : false,
+      max_items: this._config.max_items ?? 0,
+      map_zoom: this._config.map_zoom !== undefined && this._config.map_zoom !== null ? this._config.map_zoom : undefined,
+      map_zoom_controls: this._config.map_zoom_controls !== undefined ? this._config.map_zoom_controls : true,
+      map_scroll_wheel: this._config.map_scroll_wheel !== undefined ? this._config.map_scroll_wheel : false,
+      map_tile_url: this._config.map_tile_url || '',
+      map_tile_attribution: this._config.map_tile_attribution || '',
+      map_tile_max_zoom: this._config.map_tile_max_zoom ?? DEFAULT_MAP_TILE_MAX_ZOOM,
+    };
+    return html`
+      <div class="container">
+        <ha-form
+          .hass=${this.hass}
+          .data=${data}
+          .schema=${schema}
+          .computeLabel=${(field) => field.label || field.name}
+          @value-changed=${this._valueChanged}
+        ></ha-form>
+      </div>
+    `;
+  }
+
+  _valueChanged = (event) => {
+    if (!this._config) return;
+    this._config = { ...this._config, ...(event.detail?.value || {}) };
+    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: this._config } }));
+  };
+}
+
 if (!customElements.get('trafikinfo-se-alert-card-editor')) {
   customElements.define('trafikinfo-se-alert-card-editor', TrafikinfoSeAlertCardEditor);
 }
 
 if (!customElements.get('trafikinfo-se-route-card-editor')) {
   customElements.define('trafikinfo-se-route-card-editor', TrafikinfoSeRouteCardEditor);
+}
+
+if (!customElements.get('trafikinfo-se-road-condition-card-editor')) {
+  customElements.define('trafikinfo-se-road-condition-card-editor', TrafikinfoSeRoadConditionCardEditor);
 }
 
 // Register the card so it appears in the "Add card" dialog
@@ -3152,6 +3609,13 @@ window.customCards.push({
   type: 'trafikinfo-se-route-card',
   name: 'Trafikinfo SE – Restid på rutt',
   description: 'Använd med en eller flera TravelTimeRoute-sensorer för att visa restid, avvikelse, trafikstatus och en gemensam karta för valda Trafikverket-rutter.',
+  preview: true,
+});
+
+window.customCards.push({
+  type: 'trafikinfo-se-road-condition-card',
+  name: 'Trafikinfo SE – Väglag',
+  description: 'Visar Trafikverkets aktuella väglag per vägsträcka, med allvarlighetsgrad, varningar, åtgärder och valfri karta.',
   preview: true,
 });
 
