@@ -240,16 +240,16 @@ def test_bundled_card_validates_custom_tile_provider_config() -> None:
     assert "Custom map tile URL must use HTTPS or be same-origin." in card_text
     assert "Custom map tile attribution is required." in card_text
     assert "Map tile max zoom must be an integer between 0 and" in card_text
-    assert card_text.count("normalizeMapTileConfig(normalized);") == 2
+    assert card_text.count("normalizeMapTileConfig(normalized);") == 3
 
 
 def test_bundled_card_editors_expose_tile_provider_fields() -> None:
     card_path = Path(frontend._card_file_path())
     card_text = card_path.read_text(encoding="utf-8")
 
-    assert card_text.count("name: 'map_tile_url'") == 2
-    assert card_text.count("name: 'map_tile_attribution'") == 2
-    assert card_text.count("name: 'map_tile_max_zoom'") == 2
+    assert card_text.count("name: 'map_tile_url'") == 3
+    assert card_text.count("name: 'map_tile_attribution'") == 3
+    assert card_text.count("name: 'map_tile_max_zoom'") == 3
 
 
 def test_bundled_card_editor_documents_road_filter_matching() -> None:

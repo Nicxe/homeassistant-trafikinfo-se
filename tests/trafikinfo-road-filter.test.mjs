@@ -33,6 +33,7 @@ after(() => rm(testDirectory, { recursive: true, force: true }));
 await import(pathToFileURL(testCardPath).href);
 
 const AlertCard = registeredElements.get('trafikinfo-se-alert-card');
+const RoadConditionCard = registeredElements.get('trafikinfo-se-road-condition-card');
 
 function event(roadNumber, roadName) {
   return {
@@ -97,4 +98,105 @@ test('unsupported wildcard forms do not match', () => {
   const events = [event('711', 'Väg 711'), event('848', 'Vallervägen (Väg 848)')];
 
   assert.deepEqual(visibleRoads('*, 7*1', events), []);
+});
+
+test('road condition card is registered and hides normal sections by default', () => {
+  assert.ok(RoadConditionCard);
+  const card = new RoadConditionCard();
+  card.config = {
+    entity: 'sensor.test_road_condition',
+    show_normal: false,
+    max_items: 0,
+  };
+  card.hass = {
+    states: {
+      'sensor.test_road_condition': {
+        state: 'ice_snow',
+        attributes: {
+          conditions: [
+            { id: 'normal', state: 'normal', condition_code: 1, road_number: '84' },
+            { id: 'snow', state: 'ice_snow', condition_code: 4, road_number: '848' },
+          ],
+        },
+      },
+    },
+  };
+
+  assert.deepEqual(card._conditionItems().map((item) => item.id), ['snow']);
+});
+
+test('road condition card sorts by severity and can show normal sections', () => {
+  const card = new RoadConditionCard();
+  card.config = {
+    entity: 'sensor.test_road_condition',
+    show_normal: true,
+    max_items: 0,
+  };
+  card.hass = {
+    states: {
+      'sensor.test_road_condition': {
+        state: 'very_difficult',
+        attributes: {
+          conditions: [
+            { id: 'normal', state: 'normal', condition_code: 1 },
+            { id: 'risk', state: 'difficult', condition_code: 2 },
+            { id: 'very', state: 'very_difficult', condition_code: 3 },
+          ],
+        },
+      },
+    },
+  };
+
+  assert.deepEqual(
+    card._conditionItems().map((item) => item.id),
+    ['very', 'risk', 'normal'],
+  );
+});
+
+test('road condition card exposes a positive normal status by default', () => {
+  const card = new RoadConditionCard();
+  card.setConfig({ entity: 'sensor.test_road_condition' });
+  card.hass = {
+    language: 'sv',
+    states: {
+      'sensor.test_road_condition': {
+        state: 'normal',
+        attributes: {
+          conditions_total: 4,
+          hazardous_sections: 0,
+          conditions: [],
+        },
+      },
+    },
+  };
+
+  assert.equal(card.config.show_normal_status, true);
+  assert.deepEqual(card._normalStatusData(), { isNormal: true, total: 4 });
+  assert.equal(card._conditionText('normal_status'), 'Normalt väglag');
+  assert.equal(
+    card._normalStatusDetail(4),
+    '4 vägavsnitt kontrollerade – inga avvikande väglag',
+  );
+});
+
+test('road condition card does not show normal status when hazards exist', () => {
+  const card = new RoadConditionCard();
+  card.config = {
+    entity: 'sensor.test_road_condition',
+    show_normal_status: true,
+  };
+  card.hass = {
+    states: {
+      'sensor.test_road_condition': {
+        state: 'difficult',
+        attributes: {
+          conditions_total: 4,
+          hazardous_sections: 1,
+          conditions: [],
+        },
+      },
+    },
+  };
+
+  assert.deepEqual(card._normalStatusData(), { isNormal: false, total: 4 });
 });

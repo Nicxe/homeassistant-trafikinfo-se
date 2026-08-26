@@ -8,9 +8,16 @@
           "api_key": "API key"
         }
       },
+      "reauth_confirm": {
+        "title": "Reconnect Trafikinfo SE",
+        "description": "Trafikverket no longer accepts the stored API key. Enter a valid replacement key.",
+        "data": {
+          "api_key": "API key"
+        }
+      },
       "entry_kind": {
         "title": "Trafikinfo SE",
-        "description": "Choose whether this entry should track traffic incidents or travel time for one predefined Trafikverket route.",
+        "description": "Choose whether this entry should track traffic incidents, current road conditions, traffic flow, or travel time for one predefined Trafikverket route.",
         "data": {
           "entry_kind": "Entry type"
         }
@@ -20,6 +27,37 @@
         "description": "Choose how you want to filter traffic information.",
         "data": {
           "filter_mode": "Filter mode"
+        }
+      },
+      "traffic_flow_scope": {
+        "title": "Trafikinfo SE",
+        "description": "Choose how you want to find a Trafikverket traffic-flow measurement site.",
+        "data": {
+          "filter_mode": "Search method"
+        }
+      },
+      "traffic_flow_coordinate": {
+        "title": "Trafikinfo SE",
+        "description": "Find traffic-flow measurement sites near a position. The API search is limited to the selected radius.",
+        "data": {
+          "location": "Search position",
+          "radius_km": "Radius (km)"
+        }
+      },
+      "traffic_flow_county": {
+        "title": "Trafikinfo SE",
+        "description": "Find traffic-flow measurement sites in one county and sort them by distance from a reference position.",
+        "data": {
+          "traffic_flow_county": "County",
+          "sort_location": "Reference position"
+        }
+      },
+      "traffic_flow_site": {
+        "title": "Trafikinfo SE",
+        "description": "Select one measurement site and direction. Nearby lane detectors at the same site are combined.",
+        "data": {
+          "traffic_flow_site_ids": "Measurement site",
+          "name": "Name"
         }
       },
       "travel_time_route_scope": {
@@ -39,7 +77,7 @@
       },
       "configure_coordinate": {
         "title": "Trafikinfo SE",
-        "description": "Filter events within a radius around a coordinate.",
+        "description": "Filter traffic information within a radius around a coordinate.",
         "data": {
           "location": "Center position",
           "radius_km": "Radius (km)",
@@ -57,7 +95,7 @@
       },
       "configure_counties": {
         "title": "Trafikinfo SE",
-        "description": "Filter events by one or more counties (or Sweden-wide).",
+        "description": "Filter traffic information by one or more counties (or Sweden-wide).",
         "data": {
           "counties": "Counties",
           "sort_location": "Reference position (for selection/sorting)",
@@ -82,6 +120,37 @@
         "description": "Choose how you want to filter traffic information.",
         "data": {
           "filter_mode": "Filter mode"
+        }
+      },
+      "reconfigure_traffic_flow_scope": {
+        "title": "Trafikinfo SE",
+        "description": "Choose how you want to find a replacement traffic-flow measurement site.",
+        "data": {
+          "filter_mode": "Search method"
+        }
+      },
+      "reconfigure_traffic_flow_coordinate": {
+        "title": "Trafikinfo SE",
+        "description": "Find replacement traffic-flow measurement sites near a position.",
+        "data": {
+          "location": "Search position",
+          "radius_km": "Radius (km)"
+        }
+      },
+      "reconfigure_traffic_flow_county": {
+        "title": "Trafikinfo SE",
+        "description": "Find replacement traffic-flow measurement sites in one county.",
+        "data": {
+          "traffic_flow_county": "County",
+          "sort_location": "Reference position"
+        }
+      },
+      "reconfigure_traffic_flow_site": {
+        "title": "Trafikinfo SE",
+        "description": "Select a replacement measurement site and direction, and optionally rename the entry.",
+        "data": {
+          "traffic_flow_site_ids": "Measurement site",
+          "name": "Name"
         }
       },
       "reconfigure_travel_time_route_scope": {
@@ -140,9 +209,14 @@
       "cannot_connect": "Failed to connect.",
       "invalid_auth": "Invalid API key.",
       "invalid_route": "Select a valid route.",
+      "invalid_traffic_flow_site": "Select a valid traffic-flow measurement site.",
       "missing_counties": "Select at least one county (or 'Sweden').",
+      "no_traffic_flow_sites": "No traffic-flow measurement sites were found for the selected search area.",
       "no_routes_found": "No routes were found for the selected catalog area.",
       "unknown": "Unexpected error."
+    },
+    "abort": {
+      "reauth_successful": "The API key was updated successfully."
     }
   },
   "options": {
@@ -196,6 +270,13 @@
         "data": {
           "name": "Name"
         }
+      },
+      "traffic_flow": {
+        "title": "Trafikinfo SE options",
+        "description": "Rename the traffic-flow entry. Use reconfigure if you want to select a different measurement site.",
+        "data": {
+          "name": "Name"
+        }
       }
     },
     "error": {
@@ -230,6 +311,37 @@
       },
       "traffic_status": {
         "name": "Traffic status"
+      },
+      "road_condition": {
+        "name": "Road condition",
+        "state": {
+          "no_data": "No data",
+          "normal": "Normal",
+          "difficult": "Difficult or risk",
+          "very_difficult": "Very difficult",
+          "ice_snow": "Ice and snow",
+          "unknown": "Unknown"
+        }
+      },
+      "hazardous_road_sections": {
+        "name": "Hazardous road sections"
+      },
+      "traffic_flow_rate": {
+        "name": "Traffic flow"
+      },
+      "traffic_flow_speed": {
+        "name": "Average speed"
+      },
+      "traffic_flow_quality": {
+        "name": "Data quality",
+        "state": {
+          "no_data": "No data",
+          "good": "Good",
+          "degraded": "Degraded",
+          "bad": "Bad",
+          "stale": "Stale",
+          "unknown": "Unknown"
+        }
       }
     }
   }
