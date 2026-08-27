@@ -3,6 +3,7 @@ name: Release
 on:
   push:
     branches: [beta, main]
+  workflow_dispatch:
 
 permissions:
   contents: write
