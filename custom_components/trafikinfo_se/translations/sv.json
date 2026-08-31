@@ -8,9 +8,16 @@
           "api_key": "API-nyckel"
         }
       },
+      "reauth_confirm": {
+        "title": "Återanslut Trafikinfo SE",
+        "description": "Trafikverket godkänner inte längre den sparade API-nyckeln. Ange en giltig ersättningsnyckel.",
+        "data": {
+          "api_key": "API-nyckel"
+        }
+      },
       "entry_kind": {
         "title": "Trafikinfo SE",
-        "description": "Välj om den här posten ska följa trafikhändelser eller restid för en fördefinierad Trafikverket-rutt.",
+        "description": "Välj om den här posten ska följa trafikhändelser, aktuellt väglag, trafikflöde eller restid för en fördefinierad Trafikverket-rutt.",
         "data": {
           "entry_kind": "Typ av post"
         }
@@ -20,6 +27,37 @@
         "description": "Välj hur du vill filtrera trafikinformation.",
         "data": {
           "filter_mode": "Filterläge"
+        }
+      },
+      "traffic_flow_scope": {
+        "title": "Trafikinfo SE",
+        "description": "Välj hur du vill hitta en mätplats för trafikflöde från Trafikverket.",
+        "data": {
+          "filter_mode": "Sökmetod"
+        }
+      },
+      "traffic_flow_coordinate": {
+        "title": "Trafikinfo SE",
+        "description": "Hitta mätplatser för trafikflöde nära en position. API-sökningen begränsas till den valda radien.",
+        "data": {
+          "location": "Sökposition",
+          "radius_km": "Radie (km)"
+        }
+      },
+      "traffic_flow_county": {
+        "title": "Trafikinfo SE",
+        "description": "Hitta mätplatser för trafikflöde i ett län och sortera dem efter avstånd från en referensposition.",
+        "data": {
+          "traffic_flow_county": "Län",
+          "sort_location": "Referensposition"
+        }
+      },
+      "traffic_flow_site": {
+        "title": "Trafikinfo SE",
+        "description": "Välj en mätplats och riktning. Närliggande körfältsdetektorer på samma plats kombineras.",
+        "data": {
+          "traffic_flow_site_ids": "Mätplats",
+          "name": "Namn"
         }
       },
       "travel_time_route_scope": {
@@ -39,35 +77,37 @@
       },
       "configure_coordinate": {
         "title": "Trafikinfo SE",
-        "description": "Filtrera händelser inom en radie runt en koordinat.",
+        "description": "Filtrera trafikinformation inom en radie runt en koordinat.",
         "data": {
           "location": "Centrumposition",
           "radius_km": "Radie (km)",
           "filter_roads": "Vägfilter (vägnummer/namn)",
           "name": "Namn",
-          "max_items": "Max antal händelser i attribut",
+          "max_items": "Max antal poster i attribut",
           "sort_mode": "Urval / sortering",
           "message_types": "Meddelandetyper (kategorier)",
           "road_filter_safety_bypass": "Kringgå vägfilter för säkerhetsrelaterade meddelanden"
         },
         "data_description": {
+          "filter_roads": "Separera värden med kommatecken eller semikolon. Vägnummer matchas exakt; lägg till * sist för ett nummerprefix (till exempel 71*). Vägnamn matchas utan hänsyn till stora och små bokstäver.",
           "road_filter_safety_bypass": "Om aktiverat visas händelser markerade som säkerhetsrelaterade av Trafikverket oavsett vägfilter. 'Viktig trafikinformation' visas alltid oavsett den här inställningen. Inaktiverat innebär att vägfiltret gäller strikt för alla händelsetyper, inklusive Trafikmeddelande."
         }
       },
       "configure_counties": {
         "title": "Trafikinfo SE",
-        "description": "Filtrera händelser på ett eller flera län (eller hela Sverige).",
+        "description": "Filtrera trafikinformation på ett eller flera län (eller hela Sverige).",
         "data": {
           "counties": "Län",
           "sort_location": "Referensposition (för urval/sortering)",
           "filter_roads": "Vägfilter (vägnummer/namn)",
           "name": "Namn",
-          "max_items": "Max antal händelser i attribut",
+          "max_items": "Max antal poster i attribut",
           "sort_mode": "Urval / sortering",
           "message_types": "Meddelandetyper (kategorier)",
           "road_filter_safety_bypass": "Kringgå vägfilter för säkerhetsrelaterade meddelanden"
         },
         "data_description": {
+          "filter_roads": "Separera värden med kommatecken eller semikolon. Vägnummer matchas exakt; lägg till * sist för ett nummerprefix (till exempel 71*). Vägnamn matchas utan hänsyn till stora och små bokstäver.",
           "road_filter_safety_bypass": "Om aktiverat visas händelser markerade som säkerhetsrelaterade av Trafikverket oavsett vägfilter. 'Viktig trafikinformation' visas alltid oavsett den här inställningen. Inaktiverat innebär att vägfiltret gäller strikt för alla händelsetyper, inklusive Trafikmeddelande."
         }
       },
@@ -80,6 +120,37 @@
         "description": "Välj hur du vill filtrera trafikinformation.",
         "data": {
           "filter_mode": "Filterläge"
+        }
+      },
+      "reconfigure_traffic_flow_scope": {
+        "title": "Trafikinfo SE",
+        "description": "Välj hur du vill hitta en ersättande mätplats för trafikflöde.",
+        "data": {
+          "filter_mode": "Sökmetod"
+        }
+      },
+      "reconfigure_traffic_flow_coordinate": {
+        "title": "Trafikinfo SE",
+        "description": "Hitta ersättande mätplatser för trafikflöde nära en position.",
+        "data": {
+          "location": "Sökposition",
+          "radius_km": "Radie (km)"
+        }
+      },
+      "reconfigure_traffic_flow_county": {
+        "title": "Trafikinfo SE",
+        "description": "Hitta ersättande mätplatser för trafikflöde i ett län.",
+        "data": {
+          "traffic_flow_county": "Län",
+          "sort_location": "Referensposition"
+        }
+      },
+      "reconfigure_traffic_flow_site": {
+        "title": "Trafikinfo SE",
+        "description": "Välj en ersättande mätplats och riktning och byt vid behov namn på posten.",
+        "data": {
+          "traffic_flow_site_ids": "Mätplats",
+          "name": "Namn"
         }
       },
       "reconfigure_travel_time_route_scope": {
@@ -105,12 +176,13 @@
           "radius_km": "Radie (km)",
           "filter_roads": "Vägfilter (vägnummer/namn)",
           "name": "Namn",
-          "max_items": "Max antal händelser i attribut",
+          "max_items": "Max antal poster i attribut",
           "sort_mode": "Urval / sortering",
           "message_types": "Meddelandetyper (kategorier)",
           "road_filter_safety_bypass": "Kringgå vägfilter för säkerhetsrelaterade meddelanden"
         },
         "data_description": {
+          "filter_roads": "Separera värden med kommatecken eller semikolon. Vägnummer matchas exakt; lägg till * sist för ett nummerprefix (till exempel 71*). Vägnamn matchas utan hänsyn till stora och små bokstäver.",
           "road_filter_safety_bypass": "Om aktiverat visas händelser markerade som säkerhetsrelaterade av Trafikverket oavsett vägfilter. 'Viktig trafikinformation' visas alltid oavsett den här inställningen. Inaktiverat innebär att vägfiltret gäller strikt för alla händelsetyper, inklusive Trafikmeddelande."
         }
       },
@@ -122,12 +194,13 @@
           "sort_location": "Referensposition (för urval/sortering)",
           "filter_roads": "Vägfilter (vägnummer/namn)",
           "name": "Namn",
-          "max_items": "Max antal händelser i attribut",
+          "max_items": "Max antal poster i attribut",
           "sort_mode": "Urval / sortering",
           "message_types": "Meddelandetyper (kategorier)",
           "road_filter_safety_bypass": "Kringgå vägfilter för säkerhetsrelaterade meddelanden"
         },
         "data_description": {
+          "filter_roads": "Separera värden med kommatecken eller semikolon. Vägnummer matchas exakt; lägg till * sist för ett nummerprefix (till exempel 71*). Vägnamn matchas utan hänsyn till stora och små bokstäver.",
           "road_filter_safety_bypass": "Om aktiverat visas händelser markerade som säkerhetsrelaterade av Trafikverket oavsett vägfilter. 'Viktig trafikinformation' visas alltid oavsett den här inställningen. Inaktiverat innebär att vägfiltret gäller strikt för alla händelsetyper, inklusive Trafikmeddelande."
         }
       }
@@ -136,9 +209,14 @@
       "cannot_connect": "Kunde inte ansluta.",
       "invalid_auth": "Ogiltig API-nyckel.",
       "invalid_route": "Välj en giltig rutt.",
+      "invalid_traffic_flow_site": "Välj en giltig mätplats för trafikflöde.",
       "missing_counties": "Välj minst ett län (eller 'Hela Sverige').",
+      "no_traffic_flow_sites": "Inga mätplatser för trafikflöde hittades i det valda sökområdet.",
       "no_routes_found": "Inga rutter hittades för det valda katalogområdet.",
       "unknown": "Oväntat fel."
+    },
+    "abort": {
+      "reauth_successful": "API-nyckeln uppdaterades."
     }
   },
   "options": {
@@ -158,12 +236,13 @@
           "radius_km": "Radie (km)",
           "filter_roads": "Vägfilter (vägnummer/namn)",
           "name": "Namn",
-          "max_items": "Max antal händelser i attribut",
+          "max_items": "Max antal poster i attribut",
           "sort_mode": "Urval / sortering",
           "message_types": "Meddelandetyper (kategorier)",
           "road_filter_safety_bypass": "Kringgå vägfilter för säkerhetsrelaterade meddelanden"
         },
         "data_description": {
+          "filter_roads": "Separera värden med kommatecken eller semikolon. Vägnummer matchas exakt; lägg till * sist för ett nummerprefix (till exempel 71*). Vägnamn matchas utan hänsyn till stora och små bokstäver.",
           "road_filter_safety_bypass": "Om aktiverat visas händelser markerade som säkerhetsrelaterade av Trafikverket oavsett vägfilter. 'Viktig trafikinformation' visas alltid oavsett den här inställningen. Inaktiverat innebär att vägfiltret gäller strikt för alla händelsetyper, inklusive Trafikmeddelande."
         }
       },
@@ -175,18 +254,26 @@
           "sort_location": "Referensposition (för urval/sortering)",
           "filter_roads": "Vägfilter (vägnummer/namn)",
           "name": "Namn",
-          "max_items": "Max antal händelser i attribut",
+          "max_items": "Max antal poster i attribut",
           "sort_mode": "Urval / sortering",
           "message_types": "Meddelandetyper (kategorier)",
           "road_filter_safety_bypass": "Kringgå vägfilter för säkerhetsrelaterade meddelanden"
         },
         "data_description": {
+          "filter_roads": "Separera värden med kommatecken eller semikolon. Vägnummer matchas exakt; lägg till * sist för ett nummerprefix (till exempel 71*). Vägnamn matchas utan hänsyn till stora och små bokstäver.",
           "road_filter_safety_bypass": "Om aktiverat visas händelser markerade som säkerhetsrelaterade av Trafikverket oavsett vägfilter. 'Viktig trafikinformation' visas alltid oavsett den här inställningen. Inaktiverat innebär att vägfiltret gäller strikt för alla händelsetyper, inklusive Trafikmeddelande."
         }
       },
       "route": {
         "title": "Trafikinfo SE alternativ",
         "description": "Byt namn på restidsposten. Använd omkonfigurera om du vill välja en annan rutt.",
+        "data": {
+          "name": "Namn"
+        }
+      },
+      "traffic_flow": {
+        "title": "Trafikinfo SE alternativ",
+        "description": "Byt namn på trafikflödesposten. Använd omkonfigurera om du vill välja en annan mätplats.",
         "data": {
           "name": "Namn"
         }
@@ -224,6 +311,37 @@
       },
       "traffic_status": {
         "name": "Trafikstatus"
+      },
+      "road_condition": {
+        "name": "Väglag",
+        "state": {
+          "no_data": "Ingen data",
+          "normal": "Normalt",
+          "difficult": "Besvärligt eller risk",
+          "very_difficult": "Mycket besvärligt",
+          "ice_snow": "Is och snö",
+          "unknown": "Okänt"
+        }
+      },
+      "hazardous_road_sections": {
+        "name": "Avvikande vägsträckor"
+      },
+      "traffic_flow_rate": {
+        "name": "Trafikflöde"
+      },
+      "traffic_flow_speed": {
+        "name": "Medelhastighet"
+      },
+      "traffic_flow_quality": {
+        "name": "Datakvalitet",
+        "state": {
+          "no_data": "Ingen data",
+          "good": "Bra",
+          "degraded": "Nedsatt",
+          "bad": "Dålig",
+          "stale": "För gammal",
+          "unknown": "Okänd"
+        }
       }
     }
   }
