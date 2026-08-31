@@ -10,3 +10,4 @@ __pycache__/
 !/custom_components/trafikinfo_se/tests/test_road_filter.py
 !/custom_components/trafikinfo_se/tests/test_road_condition.py
 !/custom_components/trafikinfo_se/tests/test_traffic_flow.py
+!/custom_components/trafikinfo_se/tests/test_coordinator_logging.py
