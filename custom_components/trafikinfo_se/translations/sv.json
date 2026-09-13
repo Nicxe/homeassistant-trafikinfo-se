@@ -54,7 +54,7 @@
       },
       "traffic_flow_site": {
         "title": "Trafikinfo SE",
-        "description": "Avståndet räknas från din valda kartposition. Riktningen, till exempel norrgående, gäller trafiken och anger inte var mätplatsen ligger. Närliggande körfältsdetektorer på samma plats kombineras. I nästa steg kan du öppna den valda mätplatsens position på en karta innan du sparar.\n\nDu kan även utforska [Trafikverkets karta](https://vtf.trafikverket.se/SeTrafikinformation) via fliken TIKK. Den innehåller även historiska mätningar, och alla punkter är inte nödvändigtvis tillgängliga här.",
+        "description": "Avståndet räknas från din valda kartposition. Riktningen, till exempel norrgående, gäller trafiken och anger inte var mätplatsen ligger. Närliggande körfältsdetektorer på samma plats kombineras. I nästa steg kan du öppna den valda mätplatsens position på en karta innan du sparar.\n\nDu kan även utforska [Trafikverkets karta]({trafikverket_map_url}) via fliken TIKK. Den innehåller även historiska mätningar, och alla punkter är inte nödvändigtvis tillgängliga här.",
         "data": {
           "traffic_flow_site_ids": "Mätplats",
           "name": "Namn"
@@ -147,7 +147,7 @@
       },
       "reconfigure_traffic_flow_site": {
         "title": "Trafikinfo SE",
-        "description": "Avståndet räknas från din valda kartposition. Riktningen, till exempel norrgående, gäller trafiken och anger inte var mätplatsen ligger. Närliggande körfältsdetektorer på samma plats kombineras. I nästa steg kan du öppna den valda mätplatsens position på en karta innan du sparar.\n\nDu kan även utforska [Trafikverkets karta](https://vtf.trafikverket.se/SeTrafikinformation) via fliken TIKK. Den innehåller även historiska mätningar, och alla punkter är inte nödvändigtvis tillgängliga här.",
+        "description": "Avståndet räknas från din valda kartposition. Riktningen, till exempel norrgående, gäller trafiken och anger inte var mätplatsen ligger. Närliggande körfältsdetektorer på samma plats kombineras. I nästa steg kan du öppna den valda mätplatsens position på en karta innan du sparar.\n\nDu kan även utforska [Trafikverkets karta]({trafikverket_map_url}) via fliken TIKK. Den innehåller även historiska mätningar, och alla punkter är inte nödvändigtvis tillgängliga här.",
         "data": {
           "traffic_flow_site_ids": "Mätplats",
           "name": "Namn"

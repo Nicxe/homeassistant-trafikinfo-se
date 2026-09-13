@@ -54,7 +54,7 @@
       },
       "traffic_flow_site": {
         "title": "Trafikinfo SE",
-        "description": "Distance is measured from your chosen map position. The direction, such as northbound, describes the traffic, not where the site is located. Nearby lane detectors at the same site are combined. In the next step you can open the selected site’s location on a map before saving.\n\nYou can also explore [Trafikverket’s map](https://vtf.trafikverket.se/SeTrafikinformation) using the TIKK tab. It also includes historical measurements, and not all points are necessarily available here.",
+        "description": "Distance is measured from your chosen map position. The direction, such as northbound, describes the traffic, not where the site is located. Nearby lane detectors at the same site are combined. In the next step you can open the selected site’s location on a map before saving.\n\nYou can also explore [Trafikverket’s map]({trafikverket_map_url}) using the TIKK tab. It also includes historical measurements, and not all points are necessarily available here.",
         "data": {
           "traffic_flow_site_ids": "Measurement site",
           "name": "Name"
@@ -147,7 +147,7 @@
       },
       "reconfigure_traffic_flow_site": {
         "title": "Trafikinfo SE",
-        "description": "Distance is measured from your chosen map position. The direction, such as northbound, describes the traffic, not where the site is located. Nearby lane detectors at the same site are combined. In the next step you can open the selected site’s location on a map before saving.\n\nYou can also explore [Trafikverket’s map](https://vtf.trafikverket.se/SeTrafikinformation) using the TIKK tab. It also includes historical measurements, and not all points are necessarily available here.",
+        "description": "Distance is measured from your chosen map position. The direction, such as northbound, describes the traffic, not where the site is located. Nearby lane detectors at the same site are combined. In the next step you can open the selected site’s location on a map before saving.\n\nYou can also explore [Trafikverket’s map]({trafikverket_map_url}) using the TIKK tab. It also includes historical measurements, and not all points are necessarily available here.",
         "data": {
           "traffic_flow_site_ids": "Measurement site",
           "name": "Name"

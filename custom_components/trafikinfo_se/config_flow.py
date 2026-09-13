@@ -69,6 +69,7 @@ from .traffic_flow import TrafficFlowSite, async_fetch_traffic_flow_sites
 from .travel_time_route import TravelTimeRouteCatalogEntry, async_fetch_route_catalog
 
 _LOGGER = logging.getLogger(__name__)
+_TRAFIKVERKET_MAP_URL = "https://vtf.trafikverket.se/SeTrafikinformation"
 
 
 class CannotConnect(Exception):
@@ -652,7 +653,10 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
         return self.async_show_form(
-            step_id="traffic_flow_site", data_schema=schema, errors=errors
+            step_id="traffic_flow_site",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={"trafikverket_map_url": _TRAFIKVERKET_MAP_URL},
         )
 
     async def async_step_traffic_flow_confirm(
@@ -1245,6 +1249,7 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="reconfigure_traffic_flow_site",
             data_schema=schema,
             errors=errors,
+            description_placeholders={"trafikverket_map_url": _TRAFIKVERKET_MAP_URL},
         )
 
     async def async_step_reconfigure_travel_time_route_scope(
