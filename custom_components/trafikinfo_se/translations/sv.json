@@ -31,14 +31,14 @@
       },
       "traffic_flow_scope": {
         "title": "Trafikinfo SE",
-        "description": "Välj hur du vill hitta en mätplats för trafikflöde från Trafikverket.",
+        "description": "Välj hur mätplatser ska sökas: inom en radie eller i ett helt län. Kartan i nästa steg anger din referensposition och visar inte mätplatserna. Du får kontrollera den valda mätplatsens position innan du sparar.",
         "data": {
           "filter_mode": "Sökmetod"
         }
       },
       "traffic_flow_coordinate": {
         "title": "Trafikinfo SE",
-        "description": "Hitta mätplatser för trafikflöde nära en position. API-sökningen begränsas till den valda radien.",
+        "description": "Markera en sökposition och välj radie. Kartnålen är sökningens mittpunkt, inte en mätplats. Mätplatser inom radien visas i en lista i nästa steg, närmast först.",
         "data": {
           "location": "Sökposition",
           "radius_km": "Radie (km)"
@@ -46,7 +46,7 @@
       },
       "traffic_flow_county": {
         "title": "Trafikinfo SE",
-        "description": "Hitta mätplatser för trafikflöde i ett län och sortera dem efter avstånd från en referensposition.",
+        "description": "Välj ett län och markera en referensposition på kartan. Positionen används bara för att sortera länets mätplatser efter avstånd. Kartan visar inte mätplatserna; de visas i en lista i nästa steg.",
         "data": {
           "traffic_flow_county": "Län",
           "sort_location": "Referensposition"
@@ -54,7 +54,7 @@
       },
       "traffic_flow_site": {
         "title": "Trafikinfo SE",
-        "description": "Välj en mätplats och riktning. Närliggande körfältsdetektorer på samma plats kombineras.",
+        "description": "Avståndet räknas från din valda kartposition. Riktningen, till exempel norrgående, gäller trafiken och anger inte var mätplatsen ligger. Närliggande körfältsdetektorer på samma plats kombineras. I nästa steg kan du öppna den valda mätplatsens position på en karta innan du sparar.\n\nDu kan även utforska [Trafikverkets karta](https://vtf.trafikverket.se/SeTrafikinformation) via fliken TIKK. Den innehåller även historiska mätningar, och alla punkter är inte nödvändigtvis tillgängliga här.",
         "data": {
           "traffic_flow_site_ids": "Mätplats",
           "name": "Namn"
@@ -124,14 +124,14 @@
       },
       "reconfigure_traffic_flow_scope": {
         "title": "Trafikinfo SE",
-        "description": "Välj hur du vill hitta en ersättande mätplats för trafikflöde.",
+        "description": "Välj hur mätplatser ska sökas: inom en radie eller i ett helt län. Kartan i nästa steg anger din referensposition och visar inte mätplatserna. Du får kontrollera den valda mätplatsens position innan du sparar.",
         "data": {
           "filter_mode": "Sökmetod"
         }
       },
       "reconfigure_traffic_flow_coordinate": {
         "title": "Trafikinfo SE",
-        "description": "Hitta ersättande mätplatser för trafikflöde nära en position.",
+        "description": "Markera en sökposition och välj radie. Kartnålen är sökningens mittpunkt, inte en mätplats. Mätplatser inom radien visas i en lista i nästa steg, närmast först.",
         "data": {
           "location": "Sökposition",
           "radius_km": "Radie (km)"
@@ -139,7 +139,7 @@
       },
       "reconfigure_traffic_flow_county": {
         "title": "Trafikinfo SE",
-        "description": "Hitta ersättande mätplatser för trafikflöde i ett län.",
+        "description": "Välj ett län och markera en referensposition på kartan. Positionen används bara för att sortera länets mätplatser efter avstånd. Kartan visar inte mätplatserna; de visas i en lista i nästa steg.",
         "data": {
           "traffic_flow_county": "Län",
           "sort_location": "Referensposition"
@@ -147,7 +147,7 @@
       },
       "reconfigure_traffic_flow_site": {
         "title": "Trafikinfo SE",
-        "description": "Välj en ersättande mätplats och riktning och byt vid behov namn på posten.",
+        "description": "Avståndet räknas från din valda kartposition. Riktningen, till exempel norrgående, gäller trafiken och anger inte var mätplatsen ligger. Närliggande körfältsdetektorer på samma plats kombineras. I nästa steg kan du öppna den valda mätplatsens position på en karta innan du sparar.\n\nDu kan även utforska [Trafikverkets karta](https://vtf.trafikverket.se/SeTrafikinformation) via fliken TIKK. Den innehåller även historiska mätningar, och alla punkter är inte nödvändigtvis tillgängliga här.",
         "data": {
           "traffic_flow_site_ids": "Mätplats",
           "name": "Namn"
@@ -202,6 +202,16 @@
         "data_description": {
           "filter_roads": "Separera värden med kommatecken eller semikolon. Vägnummer matchas exakt; lägg till * sist för ett nummerprefix (till exempel 71*). Vägnamn matchas utan hänsyn till stora och små bokstäver.",
           "road_filter_safety_bypass": "Om aktiverat visas händelser markerade som säkerhetsrelaterade av Trafikverket oavsett vägfilter. 'Viktig trafikinformation' visas alltid oavsett den här inställningen. Inaktiverat innebär att vägfiltret gäller strikt för alla händelsetyper, inklusive Trafikmeddelande."
+        }
+      },
+      "traffic_flow_confirm": {
+        "title": "Kontrollera mätplats",
+        "description": "Mätplatsen ligger {distance} km från din referensposition.\n\nLatitud: {latitude} · Longitud: {longitude}\n\n[Visa mätplatsen på OpenStreetMap]({map_url})\n\nKontrollera läget och bekräfta, eller gå tillbaka och välj en annan mätplats.",
+        "menu_options": {
+          "traffic_flow_save": "Använd denna mätplats",
+          "traffic_flow_site": "Välj en annan mätplats",
+          "reconfigure_traffic_flow_save": "Använd denna mätplats",
+          "reconfigure_traffic_flow_site": "Välj en annan mätplats"
         }
       }
     },
