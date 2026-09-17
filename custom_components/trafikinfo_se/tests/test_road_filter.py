@@ -47,6 +47,26 @@ def coordinator() -> TrafikinfoCoordinator:
     return object.__new__(TrafikinfoCoordinator)
 
 
+def test_event_dict_exposes_point_coordinates_for_notifications() -> None:
+    event = BASE_EVENT.as_dict()
+
+    assert event["latitude"] == pytest.approx(57.70)
+    assert event["longitude"] == pytest.approx(11.97)
+
+
+def test_event_dict_uses_geometry_center_and_rejects_invalid_coordinates() -> None:
+    line_event = replace(
+        BASE_EVENT,
+        geometry_wgs84="LINESTRING (11.97 57.70, 11.99 57.72)",
+    ).as_dict()
+    invalid_event = replace(BASE_EVENT, geometry_wgs84="POINT (999 999)").as_dict()
+
+    assert line_event["latitude"] == pytest.approx(57.71)
+    assert line_event["longitude"] == pytest.approx(11.98)
+    assert invalid_event["latitude"] is None
+    assert invalid_event["longitude"] is None
+
+
 @pytest.mark.parametrize(
     ("token", "road_number", "road_name", "expected"),
     [

@@ -105,6 +105,54 @@ def _looks_like_svg(data: bytes) -> bool:
     return head.startswith(b"<") and b"<svg" in head.lower()
 
 
+def _wkt_points(wkt: str | None) -> list[tuple[float, float]]:
+    """Extract lon/lat points from common WKT shapes."""
+    if not isinstance(wkt, str):
+        return []
+    value = wkt.strip()
+    if not value:
+        return []
+
+    header = value.split("(", 1)[0].upper()
+    # WKT can be "POINT Z (...)" / "LINESTRING Z (...)" etc.
+    dimensions = 3 if " Z" in header or header.endswith("Z") else 2
+
+    numbers = _WKT_NUMBER_RE.findall(value)
+    # WKT is "X Y" (lon lat) pairs; Z may appear. We only use lon/lat.
+    if len(numbers) < 2:
+        return []
+
+    floats: list[float] = []
+    for number in numbers:
+        try:
+            floats.append(float(number))
+        except ValueError:
+            continue
+
+    points: list[tuple[float, float]] = []
+    step = 3 if dimensions == 3 else 2
+    index = 0
+    while index + 1 < len(floats):
+        longitude = floats[index]
+        latitude = floats[index + 1]
+        if -180 <= longitude <= 180 and -90 <= latitude <= 90:
+            points.append((longitude, latitude))
+        index += step
+    return points
+
+
+def _wkt_center(wkt: str | None) -> tuple[float, float] | None:
+    """Return a representative lon/lat center for a WKT geometry."""
+    points = _wkt_points(wkt)
+    if not points:
+        return None
+    count = len(points)
+    return (
+        sum(point[0] for point in points) / count,
+        sum(point[1] for point in points) / count,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class TrafikinfoEvent:
     """Flattened traffic event (one Deviation)."""
@@ -149,6 +197,10 @@ class TrafikinfoEvent:
             # Prefer the v2 icon dataset URL (matches what the Icon API returns in `Url`)
             icon_url = f"{TRAFIKVERKET_ICON_V2_URL_PREFIX}{quote(icon_id, safe='')}"
 
+        center = _wkt_center(self.geometry_wgs84)
+        longitude = center[0] if center is not None else None
+        latitude = center[1] if center is not None else None
+
         return {
             "situation_id": self.situation_id,
             "deviation_id": self.deviation_id,
@@ -177,6 +229,8 @@ class TrafikinfoEvent:
             "safety_related_message": self.safety_related_message,
             "weblink": self.weblink,
             "geometry_wgs84": self.geometry_wgs84,
+            "latitude": latitude,
+            "longitude": longitude,
             "version_time": _dt(self.version_time),
             "publication_time": _dt(self.publication_time),
             "modified_time": _dt(self.modified_time),
@@ -957,37 +1011,7 @@ class TrafikinfoCoordinator(DataUpdateCoordinator[TrafikinfoData]):
 
     def _wkt_points(self, wkt: str | None) -> list[tuple[float, float]]:
         """Extract lon/lat points from common WKT shapes (POINT/LINESTRING/etc)."""
-        if not isinstance(wkt, str):
-            return []
-        s = wkt.strip()
-        if not s:
-            return []
-
-        header = s.split("(", 1)[0].upper()
-        # WKT can be "POINT Z (...)" / "LINESTRING Z (...)" etc.
-        dim = 3 if " Z" in header or header.endswith("Z") else 2
-
-        nums = _WKT_NUMBER_RE.findall(s)
-        # WKT is "X Y" (lon lat) pairs; Z may appear. We only use lon/lat.
-        if len(nums) < 2:
-            return []
-
-        floats: list[float] = []
-        for n in nums:
-            try:
-                floats.append(float(n))
-            except ValueError:
-                continue
-
-        pts: list[tuple[float, float]] = []
-        step = 3 if dim == 3 else 2
-        i = 0
-        while i + 1 < len(floats):
-            lon = floats[i]
-            lat = floats[i + 1]
-            pts.append((lon, lat))
-            i += step
-        return pts
+        return _wkt_points(wkt)
 
     def _haversine_km(
         self, lon1: float, lat1: float, lon2: float, lat2: float
