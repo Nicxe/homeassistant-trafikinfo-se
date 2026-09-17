@@ -5,6 +5,7 @@ blueprint:
     för Olycka och/eller Hinder. Filtrera på väg (vägnr/vägnamn) och påverkan
     (severity_text).
   domain: automation
+  source_url: https://github.com/Nicxe/homeassistant-trafikinfo-se/blob/main/blueprints/trafikinfo_se_notis_olycka_hinder.yaml
   input:
     notify_devices:
       name: Notisenheter (Companion App)
@@ -37,6 +38,16 @@ blueprint:
         entity:
           multiple: true
           domain: sensor
+
+    dashboard_path:
+      name: Dashboardvy vid tryck (valfritt)
+      description: >
+        Relativ sökväg till den Home Assistant-vy som ska öppnas när du trycker
+        på en Companion App-notis, till exempel `/lovelace/trafik`. Lämna tomt
+        för att behålla Companion Apps vanliga beteende.
+      default: ""
+      selector:
+        text: {}
 
     incident_types:
       name: Händelsetyper
@@ -188,6 +199,7 @@ variables:
   source_entities_input: !input source_entities
   message_fields_input: !input message_fields
   title_fields_input: !input title_fields
+  dashboard_path_input: !input dashboard_path
   road_tokens: >-
     {% set s = (road_filter_raw | default('') | string).replace(';', ',') %}
     {% set parts = s.split(',') %}
@@ -238,6 +250,8 @@ variables:
     {{ ns.entities }}
   notify_target_count: >-
     {{ (notify_service_targets | default([], true) | count) + (notify_entity_targets | default([], true) | count) }}
+  notification_dashboard_path: >-
+    {{ dashboard_path_input | default('', true) | string | trim }}
   notification_title: >-
     {% set fields = title_fields_input | default([]) %}
     {% if fields is string %}{% set fields = [fields] %}{% endif %}
@@ -365,10 +379,21 @@ action:
   - repeat:
       for_each: "{{ notify_service_targets }}"
       sequence:
-        - service: "{{ repeat.item }}"
-          data:
-            title: "{{ notification_title }}"
-            message: "{{ notification_message }}"
+        - if:
+            - "{{ (notification_dashboard_path | length) > 0 and repeat.item.startswith('notify.mobile_app_') }}"
+          then:
+            - service: "{{ repeat.item }}"
+              data:
+                title: "{{ notification_title }}"
+                message: "{{ notification_message }}"
+                data:
+                  url: "{{ notification_dashboard_path }}"
+                  clickAction: "{{ notification_dashboard_path }}"
+          else:
+            - service: "{{ repeat.item }}"
+              data:
+                title: "{{ notification_title }}"
+                message: "{{ notification_message }}"
   - repeat:
       for_each: "{{ notify_entity_targets }}"
       sequence:
