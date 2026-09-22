@@ -30,6 +30,24 @@ blueprint:
           multiple: true
           integration: mobile_app
 
+    ios_map_zoom:
+      name: Kartzoom för iOS/iPadOS
+      description: >
+        Välj hur stort område som ska visas runt incidenten. En närmare nivå
+        visar mer detaljer, medan en större översikt visar mer av omgivningen.
+      default: "0.03"
+      selector:
+        select:
+          options:
+            - label: Mycket nära
+              value: "0.01"
+            - label: Nära
+              value: "0.03"
+            - label: Område
+              value: "0.1"
+            - label: Översikt
+              value: "0.25"
+
     notify_additional_services:
       name: Extra notifieringstjänster (valfritt)
       description: >
@@ -208,6 +226,7 @@ variables:
   severity_levels_input: !input severity_levels
   notify_devices_input: !input notify_devices
   notify_ios_devices_input: !input notify_ios_devices
+  ios_map_zoom_input: !input ios_map_zoom
   notify_additional_services_raw: !input notify_additional_services
   source_entities_input: !input source_entities
   message_fields_input: !input message_fields
@@ -219,6 +238,8 @@ variables:
     {{ incident.longitude if incident.longitude is defined else none }}
   has_ios_map_coordinates: >-
     {{ incident_latitude is not none and incident_longitude is not none }}
+  ios_map_delta: >-
+    {{ ios_map_zoom_input | default('0.03', true) | string }}
   road_tokens: >-
     {% set s = (road_filter_raw | default('') | string).replace(';', ',') %}
     {% set parts = s.split(',') %}
@@ -446,8 +467,8 @@ action:
                       action_data:
                         latitude: "{{ incident_latitude }}"
                         longitude: "{{ incident_longitude }}"
-                        latitude_delta: "0.03"
-                        longitude_delta: "0.03"
+                        latitude_delta: "{{ ios_map_delta }}"
+                        longitude_delta: "{{ ios_map_delta }}"
             - conditions:
                 - "{{ has_ios_map_coordinates }}"
               sequence:
@@ -459,8 +480,8 @@ action:
                       action_data:
                         latitude: "{{ incident_latitude }}"
                         longitude: "{{ incident_longitude }}"
-                        latitude_delta: "0.03"
-                        longitude_delta: "0.03"
+                        latitude_delta: "{{ ios_map_delta }}"
+                        longitude_delta: "{{ ios_map_delta }}"
             - conditions:
                 - "{{ (notification_dashboard_path | length) > 0 }}"
               sequence:
