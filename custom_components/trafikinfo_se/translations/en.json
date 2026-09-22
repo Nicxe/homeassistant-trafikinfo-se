@@ -31,14 +31,14 @@
       },
       "traffic_flow_scope": {
         "title": "Trafikinfo SE",
-        "description": "Choose how you want to find a Trafikverket traffic-flow measurement site.",
+        "description": "Search for measurement sites within a radius or in an entire county. The map in the next step sets your reference position and does not show measurement sites. You can check the selected site’s location before saving.",
         "data": {
           "filter_mode": "Search method"
         }
       },
       "traffic_flow_coordinate": {
         "title": "Trafikinfo SE",
-        "description": "Find traffic-flow measurement sites near a position. The API search is limited to the selected radius.",
+        "description": "Choose a search position and radius. The map pin is the centre of your search, not a measurement site. Sites within the radius appear in a list in the next step, nearest first.",
         "data": {
           "location": "Search position",
           "radius_km": "Radius (km)"
@@ -46,7 +46,7 @@
       },
       "traffic_flow_county": {
         "title": "Trafikinfo SE",
-        "description": "Find traffic-flow measurement sites in one county and sort them by distance from a reference position.",
+        "description": "Choose a county and mark a reference position on the map. This position is only used to sort the county’s measurement sites by distance. The map does not show measurement sites; they appear in a list in the next step.",
         "data": {
           "traffic_flow_county": "County",
           "sort_location": "Reference position"
@@ -54,7 +54,7 @@
       },
       "traffic_flow_site": {
         "title": "Trafikinfo SE",
-        "description": "Select one measurement site and direction. Nearby lane detectors at the same site are combined.",
+        "description": "Distance is measured from your chosen map position. The direction, such as northbound, describes the traffic, not where the site is located. Nearby lane detectors at the same site are combined. In the next step you can open the selected site’s location on a map before saving.\n\nYou can also explore [Trafikverket’s map]({trafikverket_map_url}) using the TIKK tab. It also includes historical measurements, and not all points are necessarily available here.",
         "data": {
           "traffic_flow_site_ids": "Measurement site",
           "name": "Name"
@@ -124,14 +124,14 @@
       },
       "reconfigure_traffic_flow_scope": {
         "title": "Trafikinfo SE",
-        "description": "Choose how you want to find a replacement traffic-flow measurement site.",
+        "description": "Search for measurement sites within a radius or in an entire county. The map in the next step sets your reference position and does not show measurement sites. You can check the selected site’s location before saving.",
         "data": {
           "filter_mode": "Search method"
         }
       },
       "reconfigure_traffic_flow_coordinate": {
         "title": "Trafikinfo SE",
-        "description": "Find replacement traffic-flow measurement sites near a position.",
+        "description": "Choose a search position and radius. The map pin is the centre of your search, not a measurement site. Sites within the radius appear in a list in the next step, nearest first.",
         "data": {
           "location": "Search position",
           "radius_km": "Radius (km)"
@@ -139,7 +139,7 @@
       },
       "reconfigure_traffic_flow_county": {
         "title": "Trafikinfo SE",
-        "description": "Find replacement traffic-flow measurement sites in one county.",
+        "description": "Choose a county and mark a reference position on the map. This position is only used to sort the county’s measurement sites by distance. The map does not show measurement sites; they appear in a list in the next step.",
         "data": {
           "traffic_flow_county": "County",
           "sort_location": "Reference position"
@@ -147,7 +147,7 @@
       },
       "reconfigure_traffic_flow_site": {
         "title": "Trafikinfo SE",
-        "description": "Select a replacement measurement site and direction, and optionally rename the entry.",
+        "description": "Distance is measured from your chosen map position. The direction, such as northbound, describes the traffic, not where the site is located. Nearby lane detectors at the same site are combined. In the next step you can open the selected site’s location on a map before saving.\n\nYou can also explore [Trafikverket’s map]({trafikverket_map_url}) using the TIKK tab. It also includes historical measurements, and not all points are necessarily available here.",
         "data": {
           "traffic_flow_site_ids": "Measurement site",
           "name": "Name"
@@ -202,6 +202,16 @@
         "data_description": {
           "filter_roads": "Separate values with commas or semicolons. Road numbers match exactly; append * for a number prefix (for example, 71*). Road names use case-insensitive text matching.",
           "road_filter_safety_bypass": "If enabled, events marked as safety-related by Trafikverket bypass the road filter and are always shown. 'Viktig trafikinformation' always bypasses the road filter regardless of this setting. Disable to apply road filtering strictly to all event types including Trafikmeddelande."
+        }
+      },
+      "traffic_flow_confirm": {
+        "title": "Check measurement site",
+        "description": "The measurement site is {distance} km from your reference position.\n\nLatitude: {latitude} · Longitude: {longitude}\n\n[View the measurement site on OpenStreetMap]({map_url})\n\nCheck the location and confirm, or go back and select another measurement site.",
+        "menu_options": {
+          "traffic_flow_save": "Use this measurement site",
+          "traffic_flow_site": "Choose another measurement site",
+          "reconfigure_traffic_flow_save": "Use this measurement site",
+          "reconfigure_traffic_flow_site": "Choose another measurement site"
         }
       }
     },

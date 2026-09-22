@@ -3,19 +3,18 @@
 from __future__ import annotations
 
 import asyncio
-import logging
-import xml.etree.ElementTree as ET
 from dataclasses import dataclass
+import logging
 from typing import Any
+import xml.etree.ElementTree as ET
 
 import aiohttp
-import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import aiohttp_client
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import aiohttp_client, entity_registry as er
 from homeassistant.helpers.selector import selector
+import voluptuous as vol
 
 from .const import (
     CONF_API_KEY,
@@ -70,6 +69,7 @@ from .traffic_flow import TrafficFlowSite, async_fetch_traffic_flow_sites
 from .travel_time_route import TravelTimeRouteCatalogEntry, async_fetch_route_catalog
 
 _LOGGER = logging.getLogger(__name__)
+_TRAFIKVERKET_MAP_URL = "https://vtf.trafikverket.se/SeTrafikinformation"
 
 
 class CannotConnect(Exception):
@@ -141,7 +141,7 @@ async def _async_test_api_key(hass: HomeAssistant, api_key: str) -> _TestResult:
                     )
                     raise CannotConnect(f"HTTP {resp.status}")
 
-    except asyncio.TimeoutError as err:
+    except TimeoutError as err:
         raise CannotConnect("Connection timeout") from err
     except aiohttp.ClientError as err:
         raise CannotConnect(f"Connection error: {err}") from err
@@ -171,6 +171,7 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._route_catalog_county: str = COUNTY_ALL
         self._route_catalog: list[TravelTimeRouteCatalogEntry] = []
         self._traffic_flow_sites: list[TrafficFlowSite] = []
+        self._traffic_flow_selection: dict[str, Any] = {}
         self._traffic_flow_search_mode: str = FILTER_MODE_COORDINATE
         self._traffic_flow_search_location: dict[str, float] = {}
         self._traffic_flow_search_radius_km: float = DEFAULT_RADIUS_KM
@@ -491,6 +492,7 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if not sites:
             return "no_traffic_flow_sites"
         self._traffic_flow_sites = sites[:200]
+        self._traffic_flow_selection = {}
         return None
 
     async def async_step_traffic_flow_coordinate(
@@ -620,27 +622,8 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if site is None:
                 errors["base"] = "invalid_traffic_flow_site"
             else:
-                default_name = (
-                    f"Trafikflöde – "
-                    f"{self._traffic_flow_direction_label(site.measurement_side)}"
-                )
-                title = str(user_input.get(CONF_NAME) or "").strip() or default_name
-                data = {
-                    CONF_API_KEY: self._api_key,
-                    CONF_ENTRY_KIND: ENTRY_KIND_TRAFFIC_FLOW,
-                    CONF_FILTER_MODE: self._traffic_flow_search_mode,
-                    CONF_LOCATION: dict(self._traffic_flow_search_location),
-                    CONF_RADIUS_KM: self._traffic_flow_search_radius_km,
-                    CONF_TRAFFIC_FLOW_COUNTY: self._traffic_flow_county,
-                    CONF_TRAFFIC_FLOW_SITE_IDS: list(site.site_ids),
-                    CONF_TRAFFIC_FLOW_SITE_LABEL: self._traffic_flow_site_option_label(
-                        site
-                    ),
-                    CONF_TRAFFIC_FLOW_SITE_LATITUDE: site.latitude,
-                    CONF_TRAFFIC_FLOW_SITE_LONGITUDE: site.longitude,
-                    CONF_TRAFFIC_FLOW_MEASUREMENT_SIDE: site.measurement_side,
-                }
-                return self._show_reload_notice_step(title=title, data=data)
+                self._traffic_flow_selection = dict(user_input)
+                return await self.async_step_traffic_flow_confirm()
 
         site_options = [
             {
@@ -652,7 +635,10 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         schema = vol.Schema(
             {
                 vol.Required(
-                    CONF_TRAFFIC_FLOW_SITE_IDS, default=site_options[0]["value"]
+                    CONF_TRAFFIC_FLOW_SITE_IDS,
+                    default=self._traffic_flow_selection.get(
+                        CONF_TRAFFIC_FLOW_SITE_IDS, site_options[0]["value"]
+                    ),
                 ): selector(
                     {
                         "select": {
@@ -661,11 +647,112 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         }
                     }
                 ),
-                vol.Optional(CONF_NAME, default=""): str,
+                vol.Optional(
+                    CONF_NAME, default=self._traffic_flow_selection.get(CONF_NAME, "")
+                ): str,
             }
         )
         return self.async_show_form(
-            step_id="traffic_flow_site", data_schema=schema, errors=errors
+            step_id="traffic_flow_site",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={"trafikverket_map_url": _TRAFIKVERKET_MAP_URL},
+        )
+
+    async def async_step_traffic_flow_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ):
+        """Preview the selected site's position without changing an entry."""
+        site = self._traffic_flow_site_by_key(
+            self._traffic_flow_selection.get(CONF_TRAFFIC_FLOW_SITE_IDS, "")
+        )
+        if site is None:
+            if self._reconfigure_entry is not None:
+                return await self.async_step_reconfigure_traffic_flow_site()
+            return await self.async_step_traffic_flow_site()
+
+        latitude = f"{site.latitude:.5f}"
+        longitude = f"{site.longitude:.5f}"
+        prefix = "reconfigure_" if self._reconfigure_entry is not None else ""
+        return self.async_show_menu(
+            step_id="traffic_flow_confirm",
+            menu_options=[f"{prefix}traffic_flow_save", f"{prefix}traffic_flow_site"],
+            description_placeholders={
+                "latitude": latitude,
+                "longitude": longitude,
+                "distance": f"{site.distance_km:.1f}",
+                "map_url": (
+                    f"https://www.openstreetmap.org/?mlat={latitude}&mlon={longitude}"
+                    f"#map=17/{latitude}/{longitude}"
+                ),
+            },
+        )
+
+    async def async_step_traffic_flow_save(
+        self, user_input: dict[str, Any] | None = None
+    ):
+        """Continue setup after the user has confirmed the measurement site."""
+        site = self._traffic_flow_site_by_key(
+            self._traffic_flow_selection.get(CONF_TRAFFIC_FLOW_SITE_IDS, "")
+        )
+        if site is None:
+            return await self.async_step_traffic_flow_site()
+        user_input = self._traffic_flow_selection
+        default_name = (
+            f"Trafikflöde – {self._traffic_flow_direction_label(site.measurement_side)}"
+        )
+        title = str(user_input.get(CONF_NAME) or "").strip() or default_name
+        data = {
+            CONF_API_KEY: self._api_key,
+            CONF_ENTRY_KIND: ENTRY_KIND_TRAFFIC_FLOW,
+            CONF_FILTER_MODE: self._traffic_flow_search_mode,
+            CONF_LOCATION: dict(self._traffic_flow_search_location),
+            CONF_RADIUS_KM: self._traffic_flow_search_radius_km,
+            CONF_TRAFFIC_FLOW_COUNTY: self._traffic_flow_county,
+            CONF_TRAFFIC_FLOW_SITE_IDS: list(site.site_ids),
+            CONF_TRAFFIC_FLOW_SITE_LABEL: self._traffic_flow_site_option_label(site),
+            CONF_TRAFFIC_FLOW_SITE_LATITUDE: site.latitude,
+            CONF_TRAFFIC_FLOW_SITE_LONGITUDE: site.longitude,
+            CONF_TRAFFIC_FLOW_MEASUREMENT_SIDE: site.measurement_side,
+        }
+        return self._show_reload_notice_step(title=title, data=data)
+
+    async def async_step_reconfigure_traffic_flow_save(
+        self, user_input: dict[str, Any] | None = None
+    ):
+        """Apply a replacement site only after the location is confirmed."""
+        entry = self._reconfigure_entry
+        if entry is None:
+            return self.async_abort(reason="entry_not_found")
+        site = self._traffic_flow_site_by_key(
+            self._traffic_flow_selection.get(CONF_TRAFFIC_FLOW_SITE_IDS, "")
+        )
+        if site is None:
+            return await self.async_step_reconfigure_traffic_flow_site()
+        user_input = self._traffic_flow_selection
+        new_data = dict(entry.data)
+        new_data.update(
+            {
+                CONF_ENTRY_KIND: ENTRY_KIND_TRAFFIC_FLOW,
+                CONF_FILTER_MODE: self._traffic_flow_search_mode,
+                CONF_LOCATION: dict(self._traffic_flow_search_location),
+                CONF_RADIUS_KM: self._traffic_flow_search_radius_km,
+                CONF_TRAFFIC_FLOW_COUNTY: self._traffic_flow_county,
+                CONF_TRAFFIC_FLOW_SITE_IDS: list(site.site_ids),
+                CONF_TRAFFIC_FLOW_SITE_LABEL: self._traffic_flow_site_option_label(
+                    site
+                ),
+                CONF_TRAFFIC_FLOW_SITE_LATITUDE: site.latitude,
+                CONF_TRAFFIC_FLOW_SITE_LONGITUDE: site.longitude,
+                CONF_TRAFFIC_FLOW_MEASUREMENT_SIDE: site.measurement_side,
+            }
+        )
+        title = str(user_input.get(CONF_NAME) or "").strip()
+        return self.async_update_reload_and_abort(
+            entry=entry,
+            data=new_data,
+            reason="reconfigured_successful",
+            title=title or entry.title,
         )
 
     async def async_step_travel_time_route_scope(
@@ -1115,30 +1202,8 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if site is None:
                 errors["base"] = "invalid_traffic_flow_site"
             else:
-                new_data = dict(entry.data)
-                new_data.update(
-                    {
-                        CONF_ENTRY_KIND: ENTRY_KIND_TRAFFIC_FLOW,
-                        CONF_FILTER_MODE: self._traffic_flow_search_mode,
-                        CONF_LOCATION: dict(self._traffic_flow_search_location),
-                        CONF_RADIUS_KM: self._traffic_flow_search_radius_km,
-                        CONF_TRAFFIC_FLOW_COUNTY: self._traffic_flow_county,
-                        CONF_TRAFFIC_FLOW_SITE_IDS: list(site.site_ids),
-                        CONF_TRAFFIC_FLOW_SITE_LABEL: self._traffic_flow_site_option_label(
-                            site
-                        ),
-                        CONF_TRAFFIC_FLOW_SITE_LATITUDE: site.latitude,
-                        CONF_TRAFFIC_FLOW_SITE_LONGITUDE: site.longitude,
-                        CONF_TRAFFIC_FLOW_MEASUREMENT_SIDE: site.measurement_side,
-                    }
-                )
-                title = str(user_input.get(CONF_NAME) or "").strip()
-                return self.async_update_reload_and_abort(
-                    entry=entry,
-                    data=new_data,
-                    reason="reconfigured_successful",
-                    title=title or entry.title,
-                )
+                self._traffic_flow_selection = dict(user_input)
+                return await self.async_step_traffic_flow_confirm()
 
         site_options = [
             {
@@ -1160,7 +1225,10 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         schema = vol.Schema(
             {
                 vol.Required(
-                    CONF_TRAFFIC_FLOW_SITE_IDS, default=default_site
+                    CONF_TRAFFIC_FLOW_SITE_IDS,
+                    default=self._traffic_flow_selection.get(
+                        CONF_TRAFFIC_FLOW_SITE_IDS, default_site
+                    ),
                 ): selector(
                     {
                         "select": {
@@ -1169,13 +1237,19 @@ class TrafikinfoSEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         }
                     }
                 ),
-                vol.Optional(CONF_NAME, default=entry.title or "Trafikflöde"): str,
+                vol.Optional(
+                    CONF_NAME,
+                    default=self._traffic_flow_selection.get(
+                        CONF_NAME, entry.title or "Trafikflöde"
+                    ),
+                ): str,
             }
         )
         return self.async_show_form(
             step_id="reconfigure_traffic_flow_site",
             data_schema=schema,
             errors=errors,
+            description_placeholders={"trafikverket_map_url": _TRAFIKVERKET_MAP_URL},
         )
 
     async def async_step_reconfigure_travel_time_route_scope(
