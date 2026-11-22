@@ -3225,6 +3225,23 @@ class TrafikinfoSeTrafficFlowCard extends TrafikinfoSeAlertCard {
         font-size: 0.78rem;
         line-height: 1.2;
       }
+      .flow-reference {
+        margin-top: 7px;
+        color: var(--secondary-text-color);
+        font-size: 0.82rem;
+        line-height: 1.35;
+      }
+      .flow-deviation {
+        color: var(--primary-text-color);
+        font-size: 0.85rem;
+        line-height: 1.35;
+        font-variant-numeric: tabular-nums;
+      }
+      .flow-comparison-message {
+        color: var(--secondary-text-color);
+        font-size: 0.82rem;
+        line-height: 1.35;
+      }
       .flow-statusline {
         display: flex;
         align-items: center;
@@ -3360,7 +3377,8 @@ class TrafikinfoSeTrafficFlowCard extends TrafikinfoSeAlertCard {
     const sameSite = candidates.filter(({ stateObj }) => JSON.stringify(stateObj.attributes?.site_ids || []) === siteSignature);
     const qualityStates = new Set(['no_data', 'good', 'degraded', 'bad', 'stale', 'unknown']);
     const quality = sameSite.find(({ stateObj }) => qualityStates.has(String(stateObj?.state || '').toLowerCase()));
-    const speed = sameSite.find(({ stateObj }) => String(stateObj?.attributes?.unit_of_measurement || '').toLowerCase() === 'km/h');
+    const speed = sameSite.find(({ stateObj }) => stateObj?.attributes?.device_class === 'speed'
+      || String(stateObj?.attributes?.unit_of_measurement || '').toLowerCase() === 'km/h');
     return {
       flow_entity: flow?.entityId || '',
       speed_entity: speed?.entityId || '',
@@ -3376,7 +3394,8 @@ class TrafikinfoSeTrafficFlowCard extends TrafikinfoSeAlertCard {
   getCardSize() {
     const header = this._showHeader() ? 1 : 0;
     const laneRows = this.config?.show_lanes === true ? Math.min(this._measurements().length, 4) : 0;
-    return header + 2 + laneRows;
+    const comparisonRows = this._trafficFlowData().comparison ? 1 : 0;
+    return header + 2 + laneRows + comparisonRows;
   }
 
   shouldUpdate(changed) {
@@ -3393,7 +3412,9 @@ class TrafikinfoSeTrafficFlowCard extends TrafikinfoSeAlertCard {
       snapshot.totalCount,
       snapshot.siteLabel,
       snapshot.measurements,
+      snapshot.comparison,
       snapshot.unavailable,
+      this.hass?.locale?.language || this.hass?.language,
     ]);
     if (this._lastTrafficFlowKey === key) return false;
     this._lastTrafficFlowKey = key;
@@ -3447,6 +3468,7 @@ class TrafikinfoSeTrafficFlowCard extends TrafikinfoSeAlertCard {
                         <span class="flow-unit">${this._flowText('vehicles_per_hour')}</span>
                       </div>
                       <div class="flow-metric-label">${this._flowText('total_flow')}</div>
+                      ${this._renderFlowComparison(data.comparison, 'flow')}
                     </div>
                   </div>
                   <div class="flow-metric">
@@ -3457,9 +3479,16 @@ class TrafikinfoSeTrafficFlowCard extends TrafikinfoSeAlertCard {
                         <span class="flow-unit">km/h</span>
                       </div>
                       <div class="flow-metric-label">${this._flowText('weighted_speed')}</div>
+                      ${this._renderFlowComparison(data.comparison, 'speed')}
                     </div>
                   </div>
                 </div>
+
+                ${data.comparison && data.comparison.status !== 'valid' ? html`
+                  <div class="flow-comparison-message" role="status">
+                    ${this._flowText(`comparison_${data.comparison.status}`)}
+                  </div>
+                ` : html``}
 
                 <div class="flow-statusline">
                   ${this.config.show_updated !== false && data.measurementTime ? html`
@@ -3518,18 +3547,145 @@ class TrafikinfoSeTrafficFlowCard extends TrafikinfoSeAlertCard {
     const measurements = Array.isArray(flowAttrs.measurements)
       ? flowAttrs.measurements.filter((item) => item && typeof item === 'object')
       : [];
+    const flowRate = this._flowNumber(flowState?.state);
+    const speedConversion = this._flowSpeedConversion(speedAttrs.unit_of_measurement);
+    const rawSpeed = this._flowNumber(speedState?.state);
+    const speed = rawSpeed !== null && speedConversion !== null ? rawSpeed * speedConversion : null;
+    const dataAgeMinutes = this._flowNumber(flowAttrs.data_age_minutes ?? speedAttrs.data_age_minutes ?? qualityAttrs.data_age_minutes);
     return {
-      flowRate: this._flowNumber(flowState?.state),
-      speed: this._flowNumber(speedState?.state),
+      flowRate,
+      speed,
+      comparison: this._flowComparison(
+        flowAttrs.baseline_comparison,
+        unavailable ? 'unavailable' : this._normalizeQuality(qualityState?.state),
+        flowRate,
+        speed,
+        dataAgeMinutes,
+        flowAttrs.baseline_comparison == null || this._flowComparisonSourcesMatch([flowAttrs, speedAttrs, qualityAttrs]),
+        speedConversion !== null,
+      ),
       quality,
       measurementTime: flowAttrs.measurement_time || speedAttrs.measurement_time || qualityAttrs.measurement_time || null,
-      dataAgeMinutes: this._flowNumber(flowAttrs.data_age_minutes ?? speedAttrs.data_age_minutes ?? qualityAttrs.data_age_minutes),
+      dataAgeMinutes,
       validCount: this._flowNumber(flowAttrs.valid_measurement_count ?? qualityAttrs.valid_measurement_count) ?? 0,
       totalCount: this._flowNumber(flowAttrs.total_measurement_count ?? qualityAttrs.total_measurement_count) ?? measurements.length,
       siteLabel: this._cleanSiteLabel(flowAttrs.site_label || speedAttrs.site_label || qualityAttrs.site_label),
       measurements,
       unavailable,
     };
+  }
+
+  _flowSpeedConversion(unit) {
+    // HA may convert a SPEED entity's state to the user's selected unit.
+    // Keep the card's km/h labels and the integration's reference values aligned.
+    const factors = {
+      'km/h': 1, 'mph': 1.609344, 'm/s': 3.6, 'kn': 1.852,
+      'ft/s': 1.09728, 'in/s': 0.09144, 'm/min': 0.06, 'mm/s': 0.0036,
+    };
+    const selected = unit ?? 'km/h';
+    return Object.prototype.hasOwnProperty.call(factors, selected) ? factors[selected] : null;
+  }
+
+  _flowComparisonSourcesMatch(sources) {
+    const siteKey = (attributes) => {
+      const ids = attributes.site_ids;
+      if (!Array.isArray(ids) || ids.length === 0) return null;
+      if (ids.some((id) => (typeof id !== 'string' && typeof id !== 'number')
+        || (typeof id === 'number' && !Number.isFinite(id)) || String(id).trim() === '')) return null;
+      return JSON.stringify([...new Set(ids.map((id) => String(id).trim()))].sort());
+    };
+    const measuredAt = (attributes) => {
+      const value = attributes.measurement_time;
+      // Require a timezone-qualified source timestamp, never a browser-local date.
+      if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/i.test(value)) return null;
+      const parsed = Date.parse(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+    const expectedSite = siteKey(sources[0]);
+    const expectedTime = measuredAt(sources[0]);
+    return expectedSite !== null && expectedTime !== null
+      && sources.every((attributes) => siteKey(attributes) === expectedSite && measuredAt(attributes) === expectedTime);
+  }
+
+  _flowComparison(raw, quality, flowRate, speed, dataAgeMinutes, sourcesMatch, speedUnitSupported) {
+    // This is the integration's normalized contract, not Trafikverket's XML schema.
+    // Older integration versions omit it entirely and keep the existing layout.
+    if (raw === undefined || raw === null) return null;
+    const invalid = { status: 'invalid_data' };
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !sourcesMatch) return invalid;
+    if (!['good', 'degraded'].includes(quality) || (dataAgeMinutes !== null && dataAgeMinutes > 5)) return invalid;
+    if (['missing_reference', 'incomplete', 'invalid_data'].includes(raw.status)) return { status: raw.status };
+    if (raw.status !== 'valid') return invalid;
+    const numericKeys = [
+      'flow_reference', 'speed_reference',
+      'flow_deviation_percent', 'speed_deviation_percent',
+      'flow_deviation_absolute', 'speed_deviation_absolute',
+    ];
+    if (numericKeys.some((key) => raw[key] !== null && (typeof raw[key] !== 'number' || !Number.isFinite(raw[key])))) return invalid;
+    if (!Number.isInteger(raw.expected_detector_count) || raw.expected_detector_count <= 0
+      || !Number.isInteger(raw.matched_detector_count) || raw.matched_detector_count < 0) return invalid;
+    if (raw.matched_detector_count !== raw.expected_detector_count) return { status: 'incomplete' };
+    const values = Object.fromEntries(numericKeys.map((key) => [key, raw[key]]));
+    if (!speedUnitSupported) {
+      values.speed_reference = null;
+      values.speed_deviation_percent = null;
+      values.speed_deviation_absolute = null;
+    }
+    if (values.flow_reference === null && values.speed_reference === null) return invalid;
+    for (const [metric, current] of [['flow', flowRate], ['speed', speed]]) {
+      const reference = values[`${metric}_reference`];
+      const percent = values[`${metric}_deviation_percent`];
+      const absolute = values[`${metric}_deviation_absolute`];
+      if (reference === null) {
+        if (absolute !== null || percent !== null) return invalid;
+      } else if (reference < 0 || current === null || current < 0 || absolute === null
+        || (reference === 0 && percent !== null)
+        || (reference > 0 && percent === null)) return invalid;
+    }
+    return {
+      status: 'valid',
+      ...values,
+      matched_detector_count: raw.matched_detector_count,
+      expected_detector_count: raw.expected_detector_count,
+    };
+  }
+
+  _renderFlowComparison(comparison, metric) {
+    if (!comparison || comparison.status !== 'valid') return html``;
+    const reference = comparison[`${metric}_reference`];
+    if (reference === null) return html`
+      <div class="flow-reference">${this._flowText(`comparison_${metric}_unavailable`)}</div>
+    `;
+    const unit = metric === 'flow' ? this._flowText('vehicles_per_hour') : 'km/h';
+    const formattedReference = `${this._formatComparisonNumber(reference)} ${unit}`;
+    return html`
+      <div class="flow-reference">${this._flowText('historical_reference')}: ${formattedReference}</div>
+      <div class="flow-deviation">${this._formatFlowDeviation(comparison, metric)}</div>
+    `;
+  }
+
+  _formatFlowDeviation(comparison, metric) {
+    const percent = comparison[`${metric}_deviation_percent`];
+    const absolute = comparison[`${metric}_deviation_absolute`];
+    const value = percent ?? absolute;
+    if (value === null) return '';
+    if (value === 0) return this._flowText('same_as_reference');
+    const unit = percent !== null ? '%' : metric === 'flow' ? this._flowText('vehicles_per_hour') : 'km/h';
+    const direction = `${metric}_${value > 0 ? 'above' : 'below'}`;
+    return this._flowText(direction)
+      .replace('{value}', this._formatComparisonNumber(Math.abs(value)))
+      .replace('{unit}', unit);
+  }
+
+  _formatComparisonNumber(value) {
+    if (value !== 0 && Math.abs(value) < 1) {
+      const locale = this.hass?.locale?.language || this.hass?.language || 'en';
+      return new Intl.NumberFormat(locale, {
+        maximumSignificantDigits: 3,
+        notation: Math.abs(value) < 0.0001 ? 'scientific' : 'standard',
+      }).format(value);
+    }
+    return this._formatNumber(value, 1);
   }
 
   _measurements() {
@@ -3656,6 +3812,17 @@ class TrafikinfoSeTrafficFlowCard extends TrafikinfoSeAlertCard {
         average_speed: 'Average speed',
         weighted_speed: 'Flow-weighted average speed',
         vehicles_per_hour: 'vehicles/h',
+        historical_reference: 'Historical reference',
+        same_as_reference: 'Same as reference',
+        flow_above: '{value} {unit} above reference',
+        flow_below: '{value} {unit} below reference',
+        speed_above: '{value} {unit} above reference',
+        speed_below: '{value} {unit} below reference',
+        comparison_missing_reference: 'Comparison unavailable: reference data is missing.',
+        comparison_incomplete: 'Comparison unavailable: incomplete detector coverage.',
+        comparison_invalid_data: 'Comparison unavailable: measurements or reference data are invalid.',
+        comparison_flow_unavailable: 'Flow comparison unavailable',
+        comparison_speed_unavailable: 'Speed comparison unavailable',
         measured: 'Measured',
         detectors: '{valid} of {total} detectors',
         lane_details: 'Lane details',
@@ -3688,6 +3855,17 @@ class TrafikinfoSeTrafficFlowCard extends TrafikinfoSeAlertCard {
         average_speed: 'Medelhastighet',
         weighted_speed: 'Flödesviktad medelhastighet',
         vehicles_per_hour: 'fordon/tim',
+        historical_reference: 'Historisk referens',
+        same_as_reference: 'Samma som referensen',
+        flow_above: '{value} {unit} över referensen',
+        flow_below: '{value} {unit} under referensen',
+        speed_above: '{value} {unit} högre hastighet',
+        speed_below: '{value} {unit} lägre hastighet',
+        comparison_missing_reference: 'Jämförelse saknas: referensvärden saknas.',
+        comparison_incomplete: 'Jämförelse saknas: ofullständigt underlag från detektorerna.',
+        comparison_invalid_data: 'Jämförelse saknas: mätningar eller referensvärden är ogiltiga.',
+        comparison_flow_unavailable: 'Flödesjämförelse saknas',
+        comparison_speed_unavailable: 'Hastighetsjämförelse saknas',
         measured: 'Mätt',
         detectors: '{valid} av {total} detektorer',
         lane_details: 'Körfältsdetaljer',

@@ -242,6 +242,13 @@ Measurements marked `bad`, older than five minutes, or of unknown quality are ex
 | `total_measurement_count` | number | Detectors returned by Trafikverket |
 | `measurements` | list | Per-lane details on the Traffic flow sensor |
 
+TrafficFlow 1.6 supplies historical references for the measurement time where
+Trafikverket has coverage. The reference flow, reference speed, flow deviation
+and speed deviation sensors can be used in dashboards and automations. The
+traffic-flow card shows available references and differences under the current
+values. A missing reference leaves the corresponding comparison unknown.
+See [how the comparison works](docs/baseline-traffic.md).
+
 ## Travel-time routes
 
 A **Restid på rutt** entry monitors one predefined Trafikverket route. Route coverage is concentrated in Stockholm, with smaller coverage in Västra Götaland and Skåne.

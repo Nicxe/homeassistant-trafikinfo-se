@@ -51,6 +51,7 @@ from .road_condition import (
     RoadConditionSnapshot,
 )
 from .traffic_flow import (
+    TRAFFIC_FLOW_BASELINE_ENABLED,
     TRAFFIC_FLOW_QUALITY_BAD,
     TRAFFIC_FLOW_QUALITY_DEGRADED,
     TRAFFIC_FLOW_QUALITY_GOOD,
@@ -308,13 +309,17 @@ async def async_setup_entry(
                 "Missing TrafficFlow coordinator for entry %s", entry.entry_id
             )
             return
-        async_add_entities(
-            [
-                TrafikinfoTrafficFlowRateSensor(entry, coordinator),
-                TrafikinfoTrafficFlowSpeedSensor(entry, coordinator),
-                TrafikinfoTrafficFlowQualitySensor(entry, coordinator),
-            ]
-        )
+        flow_entities: list[SensorEntity] = [
+            TrafikinfoTrafficFlowRateSensor(entry, coordinator),
+            TrafikinfoTrafficFlowSpeedSensor(entry, coordinator),
+            TrafikinfoTrafficFlowQualitySensor(entry, coordinator),
+        ]
+        if TRAFFIC_FLOW_BASELINE_ENABLED:
+            flow_entities.extend(
+                TrafikinfoTrafficFlowComparisonSensor(entry, coordinator, description)
+                for description in TRAFFIC_FLOW_COMPARISON_SENSORS
+            )
+        async_add_entities(flow_entities)
         return
 
     if entry.runtime_data.entry_kind == ENTRY_KIND_TRAVEL_TIME_ROUTE:
@@ -618,7 +623,7 @@ class TrafikinfoTrafficFlowRateSensor(TrafikinfoTrafficFlowEntity):
 
     _attr_native_unit_of_measurement = "vehicles/h"
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _unrecorded_attributes = frozenset({"measurements"})
+    _unrecorded_attributes = frozenset({"measurements", "baseline_comparison"})
 
     def __init__(self, entry: ConfigEntry, coordinator: TrafficFlowCoordinator) -> None:
         super().__init__(
@@ -644,6 +649,8 @@ class TrafikinfoTrafficFlowRateSensor(TrafikinfoTrafficFlowEntity):
             if snapshot
             else []
         )
+        if TRAFFIC_FLOW_BASELINE_ENABLED and snapshot and snapshot.comparison:
+            attributes["baseline_comparison"] = snapshot.comparison.as_dict()
         return attributes
 
 
@@ -712,6 +719,81 @@ class TrafikinfoTrafficFlowQualitySensor(TrafikinfoTrafficFlowEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         return self._common_attributes()
+
+
+TRAFFIC_FLOW_COMPARISON_SENSORS = (
+    SensorEntityDescription(
+        key="flow_reference",
+        translation_key="traffic_flow_reference",
+        native_unit_of_measurement="vehicles/h",
+        icon="mdi:counter",
+    ),
+    SensorEntityDescription(
+        key="speed_reference",
+        translation_key="traffic_flow_speed_reference",
+        native_unit_of_measurement=UnitOfSpeed.KILOMETERS_PER_HOUR,
+        device_class=SensorDeviceClass.SPEED,
+        icon="mdi:speedometer",
+    ),
+    SensorEntityDescription(
+        key="flow_deviation_percent",
+        translation_key="traffic_flow_deviation",
+        native_unit_of_measurement="%",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:compare-horizontal",
+    ),
+    SensorEntityDescription(
+        key="speed_deviation_percent",
+        translation_key="traffic_flow_speed_deviation",
+        native_unit_of_measurement="%",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:compare-horizontal",
+    ),
+)
+
+
+class TrafikinfoTrafficFlowComparisonSensor(TrafikinfoTrafficFlowEntity):
+    """A reference or deviation, registered only after the adapter is verified."""
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        coordinator: TrafficFlowCoordinator,
+        description: SensorEntityDescription,
+    ) -> None:
+        super().__init__(
+            entry,
+            coordinator,
+            key=description.key,
+            translation_key=description.translation_key,
+            icon=description.icon,
+        )
+        self.entity_description = description
+
+    @property
+    def native_value(self) -> float | None:
+        snapshot = self._snapshot
+        comparison = snapshot.comparison if snapshot else None
+        if not TRAFFIC_FLOW_BASELINE_ENABLED or comparison is None:
+            return None
+        if comparison.status != "valid":
+            return None
+        return getattr(comparison, self.entity_description.key)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        snapshot = self._snapshot
+        comparison = snapshot.comparison if snapshot else None
+        return {
+            "attribution": ATTRIBUTION,
+            "comparison_status": comparison.status if comparison else None,
+            "matched_detector_count": comparison.matched_detector_count
+            if comparison
+            else None,
+            "expected_detector_count": comparison.expected_detector_count
+            if comparison
+            else None,
+        }
 
 
 class TrafikinfoTravelTimeRouteEntity(
