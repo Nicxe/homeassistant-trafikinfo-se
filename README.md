@@ -1,6 +1,6 @@
 # Trafikinfo SE
 
-[![Buy me a Coffee](https://img.shields.io/badge/Support-Buy%20me%20a%20coffee-fdd734?logo=buy-me-a-coffee)](https://www.buymeacoffee.com/NiklasV)
+[![GitHub Sponsors](https://img.shields.io/badge/Support-GitHub%20Sponsors-30363d?logo=github)](https://github.com/sponsors/Nicxe) [![Buy me a Coffee](https://img.shields.io/badge/Alternative-Buy%20me%20a%20coffee-fdd734?logo=buy-me-a-coffee)](https://buymeacoffee.com/niklasv)
 ![GitHub Release](https://img.shields.io/github/v/release/Nicxe/homeassistant-trafikinfo-se)
 ![GitHub Downloads](https://img.shields.io/github/downloads/Nicxe/homeassistant-trafikinfo-se/total)
 ![Latest Release Downloads](https://img.shields.io/github/downloads/Nicxe/homeassistant-trafikinfo-se/latest/total)
@@ -241,6 +241,13 @@ Measurements marked `bad`, older than five minutes, or of unknown quality are ex
 | `valid_measurement_count` | number | Detectors included in the numeric values |
 | `total_measurement_count` | number | Detectors returned by Trafikverket |
 | `measurements` | list | Per-lane details on the Traffic flow sensor |
+
+TrafficFlow 1.6 supplies historical references for the measurement time where
+Trafikverket has coverage. The reference flow, reference speed, flow deviation
+and speed deviation sensors can be used in dashboards and automations. The
+traffic-flow card shows available references and differences under the current
+values. A missing reference leaves the corresponding comparison unknown.
+See [how the comparison works](docs/baseline-traffic.md).
 
 ## Travel-time routes
 

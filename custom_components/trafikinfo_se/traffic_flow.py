@@ -62,6 +62,10 @@ TRAFFIC_FLOW_SITE_CLUSTER_METERS = 15.0
 TRAFFIC_FLOW_DISCOVERY_LIMIT = 5000
 TRAFFIC_FLOW_NEARBY_LIMIT = 500
 
+# TrafficFlow 1.6 BaselineTraffic was verified against the published schema and
+# real responses on 2026-11-18. Its means refer to the record's MeasurementTime.
+TRAFFIC_FLOW_BASELINE_ENABLED = True
+
 _QUALITY_PRIORITY = {
     TRAFFIC_FLOW_QUALITY_GOOD: 0,
     TRAFFIC_FLOW_QUALITY_UNKNOWN: 1,
@@ -204,6 +208,226 @@ class TrafficFlowMeasurement:
 
 
 @dataclass(frozen=True, slots=True)
+class TrafficFlowBaseline:
+    """Normalized 1.6 means for the enclosing detector's MeasurementTime.
+
+    Flow is vehicles/h and speed is km/h. Missing means remain unknown; the
+    standard deviations describe variation, not measurement quality.
+    """
+
+    site_id: str
+    measurement_side: str | None
+    vehicle_type: str | None
+    measurement_time: datetime | None
+    vehicle_flow_rate: float | None
+    average_vehicle_speed: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class TrafficFlowComparison:
+    """Comparison for a complete set of synchronized detector measurements."""
+
+    status: str
+    flow_reference: float | None = None
+    speed_reference: float | None = None
+    flow_deviation_percent: float | None = None
+    speed_deviation_percent: float | None = None
+    flow_deviation_absolute: float | None = None
+    speed_deviation_absolute: float | None = None
+    matched_detector_count: int = 0
+    expected_detector_count: int = 0
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return stable attributes consumed by sensors and the flow card."""
+        return {
+            "status": self.status,
+            "flow_reference": self.flow_reference,
+            "speed_reference": self.speed_reference,
+            "flow_deviation_percent": self.flow_deviation_percent,
+            "speed_deviation_percent": self.speed_deviation_percent,
+            "flow_deviation_absolute": self.flow_deviation_absolute,
+            "speed_deviation_absolute": self.speed_deviation_absolute,
+            "matched_detector_count": self.matched_detector_count,
+            "expected_detector_count": self.expected_detector_count,
+        }
+
+
+def _aware_datetime(value: datetime | None) -> bool:
+    return isinstance(value, datetime) and value.utcoffset() is not None
+
+
+def _nonnegative_finite(value: float | None) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (float, int)):
+        return False
+    try:
+        return math.isfinite(value) and value >= 0
+    except OverflowError:
+        return False
+
+
+def traffic_flow_comparison(
+    measurements: list[TrafficFlowMeasurement],
+    baselines: list[TrafficFlowBaseline],
+    *,
+    expected_site_ids: list[str] | tuple[str, ...],
+    now: datetime | None = None,
+) -> TrafficFlowComparison:
+    """Compare complete, current detector records against their attached means.
+
+    Require every configured detector exactly once, one direction/category,
+    synchronized observation timestamps and periods, and a reference belonging
+    to each timestamp. No partial-site comparison may look like reduced traffic.
+    Both speed aggregates use *current* flow weights, matching the existing
+    speed sensor and avoiding differences caused only by changed lane shares.
+    Reference speeds therefore describe the current lane mix, not a separately
+    weighted historical site average. Zero flow has no meaningful speed weight.
+
+    Flow and speed references are optional independently. A metric is exposed
+    only when every detector contributing to that metric has a usable mean.
+    """
+    current_time = now or dt_util.utcnow()
+    expected = set(expected_site_ids)
+    current_by_id = {item.site_id: item for item in measurements}
+    reference_by_id = {item.site_id: item for item in baselines}
+    counts = {
+        "matched_detector_count": len(
+            expected & current_by_id.keys() & reference_by_id.keys()
+        ),
+        "expected_detector_count": len(expected),
+    }
+
+    def unavailable(status: str) -> TrafficFlowComparison:
+        return TrafficFlowComparison(status=status, **counts)
+
+    if (
+        not expected
+        or len(expected) != len(expected_site_ids)
+        or any(not isinstance(value, str) or not value.strip() for value in expected)
+        or len(current_by_id) != len(measurements)
+        or len(reference_by_id) != len(baselines)
+        or current_by_id.keys() - expected
+        or reference_by_id.keys() - expected
+        or not _aware_datetime(current_time)
+    ):
+        return unavailable("invalid_data")
+    if current_by_id.keys() != expected:
+        return unavailable("incomplete")
+    if not baselines:
+        return unavailable("missing_reference")
+    if reference_by_id.keys() != expected:
+        return unavailable("incomplete")
+
+    sides = {item.measurement_side for item in measurements}
+    observation_times = {item.measurement_time for item in measurements}
+    observation_periods = {item.measurement_period_s for item in measurements}
+    if (
+        len(sides) != 1
+        or not all(sides)
+        or len(observation_times) != 1
+        or len(observation_periods) != 1
+    ):
+        return unavailable("invalid_data")
+
+    for site_id, measurement in current_by_id.items():
+        reference = reference_by_id[site_id]
+        measured_at = measurement.measurement_time
+        if (
+            measurement.deleted is True
+            or not _aware_datetime(measured_at)
+            or measured_at > current_time
+            or measurement.effective_quality(current_time)
+            not in (TRAFFIC_FLOW_QUALITY_GOOD, TRAFFIC_FLOW_QUALITY_DEGRADED)
+            or not _nonnegative_finite(measurement.measurement_period_s)
+            or measurement.measurement_period_s == 0
+            or measurement.vehicle_type != "anyVehicle"
+            or measurement.vehicle_type != reference.vehicle_type
+            or measurement.measurement_side != reference.measurement_side
+            or not _aware_datetime(reference.measurement_time)
+            or reference.measurement_time != measured_at
+            or not _nonnegative_finite(measurement.vehicle_flow_rate)
+        ):
+            return unavailable("invalid_data")
+
+    current_flow = sum(item.vehicle_flow_rate for item in measurements)
+    if not _nonnegative_finite(current_flow):
+        return unavailable("invalid_data")
+
+    def metric_status(values: list[float | None]) -> str:
+        if any(
+            value is not None and not _nonnegative_finite(value) for value in values
+        ):
+            return "invalid_data"
+        if not values or all(value is None for value in values):
+            return "missing_reference"
+        return "incomplete" if any(value is None for value in values) else "valid"
+
+    flow_means = [item.vehicle_flow_rate for item in baselines]
+    flow_status = metric_status(flow_means)
+    reference_flow = sum(flow_means) if flow_status == "valid" else None
+    if reference_flow is not None and not _nonnegative_finite(reference_flow):
+        reference_flow = None
+        flow_status = "invalid_data"
+
+    weighted_lanes = [item for item in measurements if item.vehicle_flow_rate > 0]
+    speed_status = metric_status(
+        [reference_by_id[item.site_id].average_vehicle_speed for item in weighted_lanes]
+    )
+    if any(
+        not _nonnegative_finite(item.average_vehicle_speed) for item in weighted_lanes
+    ):
+        speed_status = "invalid_data"
+    current_speed = None
+    reference_speed = None
+    if current_flow > 0 and speed_status == "valid":
+        # Normalize weights before multiplication to avoid intermediate overflow.
+        current_speed = sum(
+            item.average_vehicle_speed * (item.vehicle_flow_rate / current_flow)
+            for item in weighted_lanes
+        )
+        reference_speed = sum(
+            reference_by_id[item.site_id].average_vehicle_speed
+            * (item.vehicle_flow_rate / current_flow)
+            for item in weighted_lanes
+        )
+        if not _nonnegative_finite(current_speed) or not _nonnegative_finite(
+            reference_speed
+        ):
+            current_speed = None
+            reference_speed = None
+            speed_status = "invalid_data"
+
+    if reference_flow is None and reference_speed is None:
+        for status in ("invalid_data", "incomplete", "missing_reference"):
+            if status in (flow_status, speed_status):
+                return unavailable(status)
+
+    def percent(current: float, reference: float) -> float | None:
+        if reference <= 0:
+            return None
+        value = 100 * ((current - reference) / reference)
+        return round(value, 2) if math.isfinite(value) else None
+
+    return TrafficFlowComparison(
+        status="valid",
+        flow_reference=reference_flow,
+        speed_reference=reference_speed,
+        flow_deviation_percent=percent(current_flow, reference_flow)
+        if reference_flow is not None
+        else None,
+        speed_deviation_percent=percent(current_speed, reference_speed)
+        if current_speed is not None and reference_speed is not None
+        else None,
+        flow_deviation_absolute=current_flow - reference_flow
+        if reference_flow is not None
+        else None,
+        speed_deviation_absolute=current_speed - reference_speed
+        if current_speed is not None and reference_speed is not None
+        else None,
+        **counts,
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class TrafficFlowSnapshot:
     """Aggregated current state for one selected traffic-flow site."""
 
@@ -217,6 +441,7 @@ class TrafficFlowSnapshot:
     total_measurement_count: int
     last_modified: datetime | None
     last_change_id: str | None
+    comparison: TrafficFlowComparison | None = None
 
 
 def traffic_flow_snapshot(
@@ -225,6 +450,7 @@ def traffic_flow_snapshot(
     now: datetime | None = None,
     last_modified: datetime | None = None,
     last_change_id: str | None = None,
+    comparison: TrafficFlowComparison | None = None,
 ) -> TrafficFlowSnapshot:
     """Aggregate lane detectors without treating bad or stale data as valid."""
     current_time = now or dt_util.utcnow()
@@ -284,6 +510,7 @@ def traffic_flow_snapshot(
         total_measurement_count=len(measurements),
         last_modified=last_modified,
         last_change_id=last_change_id,
+        comparison=comparison,
     )
 
 
@@ -324,8 +551,13 @@ _TRAFFIC_FLOW_FIELDS = (
 )
 
 
-def _include_xml() -> str:
-    return "".join(f"<INCLUDE>{field}</INCLUDE>" for field in _TRAFFIC_FLOW_FIELDS)
+def _include_xml(*, include_baseline: bool = False) -> str:
+    fields = (
+        (*_TRAFFIC_FLOW_FIELDS, "BaselineTraffic")
+        if include_baseline
+        else _TRAFFIC_FLOW_FIELDS
+    )
+    return "".join(f"<INCLUDE>{field}</INCLUDE>" for field in fields)
 
 
 def build_traffic_flow_discovery_request_xml(
@@ -390,16 +622,20 @@ def build_traffic_flow_site_request_xml(
         '<EQ name="VehicleType" value="anyVehicle" />'
         f'<IN name="SiteId" value={quoteattr(site_values)} />'
         "</AND></FILTER>"
-        f"{_include_xml()}"
+        f"{_include_xml(include_baseline=True)}"
         "</QUERY>"
         "</REQUEST>"
     )
 
 
 def parse_traffic_flow_response(
-    xml_text: str, *, now: datetime | None = None
+    xml_text: str,
+    *,
+    now: datetime | None = None,
+    expected_site_ids: list[str] | tuple[str, ...] | None = None,
 ) -> TrafficFlowSnapshot:
     """Parse current detector records and API metadata."""
+    current_time = now or dt_util.utcnow()
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError as err:
@@ -415,6 +651,17 @@ def parse_traffic_flow_response(
         raise TrafikinfoAPIError(f"Trafikverket API error: {error_message}")
 
     measurements: list[TrafficFlowMeasurement] = []
+    baselines: list[TrafficFlowBaseline] = []
+
+    def baseline_mean(element: ET.Element, metric: str) -> float | None:
+        text = _strip(element.findtext(f"./{{*}}{metric}/{{*}}Mean"))
+        if text is None:
+            return None
+        value = _as_float(text)
+        # Preserve malformed-vs-missing internally; nonfinite values are never
+        # exposed by the comparator. StdDev is not a quality or confidence flag.
+        return value if value is not None else math.nan
+
     for element in root.findall(".//{*}TrafficFlow"):
         if _as_bool(element.findtext("./{*}Deleted")) is True:
             continue
@@ -443,6 +690,23 @@ def parse_traffic_flow_response(
                 geometry_wgs84=_strip(element.findtext("./{*}Geometry/{*}WGS84")),
             )
         )
+        baseline_element = element.find("./{*}BaselineTraffic")
+        if (
+            TRAFFIC_FLOW_BASELINE_ENABLED
+            and expected_site_ids is not None
+            and baseline_element is not None
+        ):
+            measurement = measurements[-1]
+            baselines.append(
+                TrafficFlowBaseline(
+                    site_id=site_id,
+                    measurement_side=measurement.measurement_side,
+                    vehicle_type=measurement.vehicle_type,
+                    measurement_time=measurement.measurement_time,
+                    vehicle_flow_rate=baseline_mean(baseline_element, "Flow"),
+                    average_vehicle_speed=baseline_mean(baseline_element, "Speed"),
+                )
+            )
 
     measurements.sort(
         key=lambda item: (
@@ -457,9 +721,17 @@ def parse_traffic_flow_response(
         last_modified = _as_dt(last_modified_element.attrib.get("datetime"))
     return traffic_flow_snapshot(
         measurements,
-        now=now,
+        now=current_time,
         last_modified=last_modified,
         last_change_id=_strip(root.findtext(".//{*}INFO/{*}LASTCHANGEID")),
+        comparison=traffic_flow_comparison(
+            measurements,
+            baselines,
+            expected_site_ids=expected_site_ids,
+            now=current_time,
+        )
+        if TRAFFIC_FLOW_BASELINE_ENABLED and expected_site_ids is not None
+        else None,
     )
 
 
@@ -687,7 +959,9 @@ class TrafficFlowCoordinator(DataUpdateCoordinator[TrafficFlowSnapshot]):
         )
         try:
             response_text = await _async_post_xml(self.hass, request)
-            return parse_traffic_flow_response(response_text)
+            return parse_traffic_flow_response(
+                response_text, expected_site_ids=self._site_ids
+            )
         except TrafikinfoAuthenticationError as err:
             raise ConfigEntryAuthFailed(str(err)) from err
         except TrafikinfoError as err:

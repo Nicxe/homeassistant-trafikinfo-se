@@ -352,6 +352,18 @@
           "stale": "Stale",
           "unknown": "Unknown"
         }
+      },
+      "traffic_flow_reference": {
+        "name": "Reference traffic flow"
+      },
+      "traffic_flow_speed_reference": {
+        "name": "Reference speed"
+      },
+      "traffic_flow_deviation": {
+        "name": "Traffic flow deviation"
+      },
+      "traffic_flow_speed_deviation": {
+        "name": "Speed deviation"
       }
     }
   }
