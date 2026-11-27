@@ -8,21 +8,24 @@ import json
 import logging
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import urlencode
 
 from homeassistant.components.lovelace.const import (
     CONF_RESOURCE_TYPE_WS,
     CONF_URL,
     LOVELACE_DATA,
 )
+from homeassistant.components.lovelace.resources import ResourceYAMLCollection
 from homeassistant.const import CONF_ID, CONF_TYPE, EVENT_COMPONENT_LOADED
 from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.util.file import WriteError, write_utf8_file
 
 from .const import (
-    CARD_CANONICAL_BASE_URL,
+    CARD_BASE_URL,
     CARD_FILENAME,
-    CARD_LEGACY_BASE_URL,
+    CARD_RESOURCE_URLS,
     CARD_WWW_DIR,
+    DOMAIN,
     FRONTEND_DATA_COMPONENT_LISTENER,
     FRONTEND_DATA_KEY,
 )
@@ -33,16 +36,6 @@ _LOGGER = logging.getLogger(__name__)
 def _card_file_path() -> Path:
     """Return absolute path to bundled card file."""
     return Path(__file__).resolve().parent / CARD_WWW_DIR / CARD_FILENAME
-
-
-def _card_www_dir_path() -> Path:
-    """Return absolute path to bundled card www directory."""
-    return Path(__file__).resolve().parent / CARD_WWW_DIR
-
-
-def _local_www_card_path(hass: HomeAssistant) -> Path:
-    """Return target path for /local card file."""
-    return Path(hass.config.path("www")) / CARD_FILENAME
 
 
 def _read_manifest_version() -> str:
@@ -64,36 +57,14 @@ def _card_mtime() -> int:
         return 0
 
 
-def _read_file_bytes(path: Path) -> bytes:
-    """Read file bytes."""
-    return path.read_bytes()
-
-
-def _write_file_bytes(path: Path, content: bytes) -> None:
-    """Write file bytes atomically."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_bytes(content)
-    tmp.replace(path)
-
-
-async def _async_sync_card_to_local_www(hass: HomeAssistant) -> None:
-    """Sync bundled card file into /config/www for /local serving."""
-    source = _card_file_path()
-    target = _local_www_card_path(hass)
-
-    if not source.exists():
-        _LOGGER.warning("Missing bundled card file: %s", source)
+def _sync_card(target_dir: Path) -> None:
+    """Install the dashboard module alongside its cached traffic icons."""
+    content = _card_file_path().read_bytes()
+    target = target_dir / CARD_FILENAME
+    if target.is_file() and target.read_bytes() == content:
         return
-
-    source_bytes = await hass.async_add_executor_job(_read_file_bytes, source)
-
-    if target.exists():
-        target_bytes = await hass.async_add_executor_job(_read_file_bytes, target)
-        if target_bytes == source_bytes:
-            return
-
-    await hass.async_add_executor_job(_write_file_bytes, target, source_bytes)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    write_utf8_file(str(target), content, mode="wb")
 
 
 async def _cache_key_for_dev(hass: HomeAssistant) -> str:
@@ -106,24 +77,7 @@ async def _cache_key_for_dev(hass: HomeAssistant) -> str:
 
 def _url_base(url: str) -> str:
     """Return URL without query/fragment to allow stable comparisons."""
-    split = urlsplit(url)
-    return urlunsplit((split.scheme, split.netloc, split.path, "", ""))
-
-
-def _url_with_version(base_url: str, cache_key: str) -> str:
-    """Set/update the `v` query parameter for cache-busting."""
-    split = urlsplit(base_url)
-    query = dict(parse_qsl(split.query, keep_blank_values=True))
-    query["v"] = cache_key
-    return urlunsplit(
-        (
-            split.scheme,
-            split.netloc,
-            split.path,
-            urlencode(query, doseq=True),
-            split.fragment,
-        )
-    )
+    return url.partition("?")[0].partition("#")[0]
 
 
 async def _async_get_lovelace_resources(hass: HomeAssistant):
@@ -147,10 +101,9 @@ async def _async_get_lovelace_resources(hass: HomeAssistant):
     return resources
 
 
-async def _async_ensure_card_resource(hass: HomeAssistant) -> bool:
-    """Create/update Lovelace module resource for the card."""
-    cache_key = await _cache_key_for_dev(hass)
-    desired_url = _url_with_version(CARD_LEGACY_BASE_URL, cache_key)
+async def _async_ensure_card_resource(hass: HomeAssistant, cache_key: str) -> bool:
+    """Migrate the managed Lovelace resource after the module is installed."""
+    desired_url = f"{CARD_BASE_URL}?{urlencode({'v': cache_key})}"
 
     try:
         resources = await _async_get_lovelace_resources(hass)
@@ -165,47 +118,31 @@ async def _async_ensure_card_resource(hass: HomeAssistant) -> bool:
         )
         return False
 
-    try:
-        items: list[dict[str, Any]] = list(resources.async_items() or [])
-    except Exception as err:  # noqa: BLE001
-        _LOGGER.debug("Unable to list Lovelace resources: %s", err)
-        return False
-
-    local_item = None
-    legacy_item = None
-    for item in items:
-        url = item.get(CONF_URL)
-        if not isinstance(url, str):
-            continue
-        base = _url_base(url)
-        if base == CARD_LEGACY_BASE_URL:
-            local_item = item
-            break
-        if base == CARD_CANONICAL_BASE_URL:
-            legacy_item = item
-
-    target = local_item or legacy_item
-
-    if target is not None:
-        if target.get(CONF_URL) == desired_url and target.get(CONF_TYPE) == "module":
-            return True
-
-        try:
-            await resources.async_update_item(
-                target[CONF_ID],
-                {CONF_URL: desired_url, CONF_RESOURCE_TYPE_WS: "module"},
-            )
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("Unable to update Lovelace resource: %s", err)
-            return False
+    if isinstance(resources, ResourceYAMLCollection):
         return True
 
+    updates = {CONF_URL: desired_url, CONF_RESOURCE_TYPE_WS: "module"}
     try:
-        await resources.async_create_item(
-            {CONF_URL: desired_url, CONF_RESOURCE_TYPE_WS: "module"}
+        matches = [
+            item
+            for item in resources.async_items()
+            if isinstance(url := item.get(CONF_URL), str)
+            and _url_base(url) in CARD_RESOURCE_URLS
+        ]
+        if not matches:
+            await resources.async_create_item(updates)
+            return True
+
+        matches.sort(
+            key=lambda item: CARD_RESOURCE_URLS.index(_url_base(item[CONF_URL]))
         )
+        target, *duplicates = matches
+        if target[CONF_URL] != desired_url or target.get(CONF_TYPE) != "module":
+            await resources.async_update_item(target[CONF_ID], updates)
+        for duplicate in duplicates:
+            await resources.async_delete_item(duplicate[CONF_ID])
     except Exception as err:  # noqa: BLE001
-        _LOGGER.debug("Unable to create Lovelace resource: %s", err)
+        _LOGGER.warning("Unable to update dashboard card resource: %s", err)
         return False
 
     return True
@@ -218,27 +155,32 @@ def _async_component_loaded_listener(hass: HomeAssistant) -> Callable[[], None]:
     def _handle_component_loaded(event: Event) -> None:
         if event.data.get("component") not in ("lovelace", "frontend"):
             return
-        hass.async_create_task(_async_ensure_card_resource(hass))
+        hass.async_create_task(async_setup_frontend(hass, refresh_resource=True))
 
     return hass.bus.async_listen(EVENT_COMPONENT_LOADED, _handle_component_loaded)
 
 
-async def async_setup_frontend(hass: HomeAssistant) -> None:
-    """Set up static card path and Lovelace resource."""
+async def async_setup_frontend(
+    hass: HomeAssistant, *, refresh_resource: bool = False
+) -> None:
+    """Install the card before creating or migrating its dashboard resource."""
     state: dict[str, Any] = hass.data.setdefault(FRONTEND_DATA_KEY, {})
-    cache_key = await _cache_key_for_dev(hass)
+    async with state.setdefault("lock", asyncio.Lock()):
+        if FRONTEND_DATA_COMPONENT_LISTENER not in hass.data:
+            hass.data[FRONTEND_DATA_COMPONENT_LISTENER] = (
+                _async_component_loaded_listener(hass)
+            )
 
-    if state.get("cache_key") != cache_key:
-        await _async_sync_card_to_local_www(hass)
-        if await _async_ensure_card_resource(hass):
+        cache_key = await _cache_key_for_dev(hass)
+        if state.get("cache_key") != cache_key:
+            try:
+                await hass.async_add_executor_job(
+                    _sync_card, Path(hass.config.path("www", DOMAIN))
+                )
+            except (OSError, WriteError) as err:
+                _LOGGER.warning("Unable to install dashboard card: %s", err)
+                return
+        elif not refresh_resource:
+            return
+        if await _async_ensure_card_resource(hass, cache_key):
             state["cache_key"] = cache_key
-
-    if state.get("setup_done"):
-        return
-
-    if FRONTEND_DATA_COMPONENT_LISTENER not in hass.data:
-        hass.data[FRONTEND_DATA_COMPONENT_LISTENER] = _async_component_loaded_listener(
-            hass
-        )
-
-    state["setup_done"] = True

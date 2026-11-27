@@ -1,229 +1,185 @@
-from __future__ import annotations
+"""Verify dashboard card installation, resource migration and bundled features."""
 
+import os
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlsplit
 
-from homeassistant.components.lovelace.const import LOVELACE_DATA
-from homeassistant.const import CONF_ID, CONF_TYPE
+from homeassistant.components.lovelace.const import CONF_RESOURCE_TYPE_WS, LOVELACE_DATA
+from homeassistant.components.lovelace.dashboard import LovelaceStorage
+from homeassistant.components.lovelace.resources import (
+    ResourceStorageCollection,
+    ResourceYAMLCollection,
+)
+from homeassistant.const import EVENT_COMPONENT_LOADED
 import pytest
 
-from custom_components.trafikinfo_se import frontend
-from custom_components.trafikinfo_se.const import (
-    CARD_CANONICAL_BASE_URL,
-    CARD_LEGACY_BASE_URL,
-    FRONTEND_DATA_KEY,
-)
+from custom_components.trafikinfo_se import async_setup, frontend
 
-
-class _FakeResources:
-    def __init__(self, items: list[dict] | None = None) -> None:
-        self._items = list(items or [])
-        self.loaded = False
-        self.create_calls = 0
-        self.update_calls = 0
-
-    async def async_load(self) -> None:
-        self.loaded = True
-
-    def async_items(self) -> list[dict]:
-        return list(self._items)
-
-    async def async_create_item(self, data: dict) -> dict:
-        self.create_calls += 1
-        item = {
-            CONF_ID: f"generated-{self.create_calls}",
-            "url": data["url"],
-            CONF_TYPE: data.get("res_type", "module"),
-        }
-        self._items.append(item)
-        return item
-
-    async def async_update_item(self, item_id: str, updates: dict) -> dict:
-        self.update_calls += 1
-        for item in self._items:
-            if item[CONF_ID] == item_id:
-                item["url"] = updates["url"]
-                if "res_type" in updates:
-                    item[CONF_TYPE] = updates["res_type"]
-                return item
-        raise KeyError(item_id)
+CARD_FILENAME = "trafikinfo-se-alert-card.js"
+CARD_URL = "/local/trafikinfo_se/trafikinfo-se-alert-card.js"
+OLD_LOCAL_URL = "/local/trafikinfo-se-alert-card.js"
+OLD_STATIC_URL = "/trafikinfo_se-static/trafikinfo-se-alert-card.js"
+BUNDLED_CARD = Path(__file__).parents[1] / "www" / CARD_FILENAME
 
 
 @pytest.fixture
-def hass():
-    return SimpleNamespace(data={})
+def www(hass, tmp_path):
+    hass.config.config_dir = str(tmp_path)
+    return tmp_path / "www"
 
 
-@pytest.mark.asyncio
-async def test_ensure_resource_creates_when_missing(hass, monkeypatch) -> None:
-    resources = _FakeResources()
-    hass.data[LOVELACE_DATA] = SimpleNamespace(resources=resources)
-
-    async def _fake_cache_key(_hass):
-        return "0.0.0-123"
-
-    monkeypatch.setattr(frontend, "_cache_key_for_dev", _fake_cache_key)
-
-    ok = await frontend._async_ensure_card_resource(hass)
-
-    assert ok is True
-    assert resources.create_calls == 1
-    created = resources.async_items()[0]
-    assert created[CONF_TYPE] == "module"
-    assert created["url"] == f"{CARD_LEGACY_BASE_URL}?v=0.0.0-123"
+@pytest.fixture
+def resources(hass, www):
+    collection = ResourceStorageCollection(hass, LovelaceStorage(hass, None))
+    hass.data[LOVELACE_DATA] = SimpleNamespace(resources=collection)
+    return collection
 
 
-@pytest.mark.asyncio
-async def test_ensure_resource_updates_existing_canonical(hass, monkeypatch) -> None:
-    resources = _FakeResources(
-        [
-            {
-                CONF_ID: "abc",
-                CONF_TYPE: "module",
-                "url": f"{CARD_CANONICAL_BASE_URL}?v=old",
-            }
-        ]
+def assert_card_resource(item):
+    url = urlsplit(item["url"])
+    assert url.path == CARD_URL
+    assert parse_qs(url.query).get("v")
+    assert item["type"] == "module"
+
+
+async def test_new_install_places_card_in_icon_cache_parent(hass, www, resources):
+    assert await async_setup(hass, {})
+
+    target = www / "trafikinfo_se"
+    assert set(www.iterdir()) == {target}
+    assert (target / CARD_FILENAME).read_bytes() == BUNDLED_CARD.read_bytes()
+    (item,) = resources.async_items()
+    assert_card_resource(item)
+
+    assert await async_setup(hass, {})
+    assert resources.async_items() == [item]
+
+
+async def test_new_bundle_refreshes_installed_module_and_existing_resource(
+    hass, www, resources, monkeypatch
+):
+    assert await async_setup(hass, {})
+    (previous,) = resources.async_items()
+
+    new_source = www.parent / "updated-card.js"
+    new_source.write_bytes(b"export const version = 2;")
+    new_mtime = int(BUNDLED_CARD.stat().st_mtime) + 60
+    os.utime(new_source, (new_mtime, new_mtime))
+    monkeypatch.setattr(frontend, "_card_file_path", lambda: new_source)
+
+    assert await async_setup(hass, {})
+
+    (current,) = resources.async_items()
+    assert current["id"] == previous["id"]
+    assert current["url"] != previous["url"]
+    assert_card_resource(current)
+    assert (
+        www / "trafikinfo_se" / CARD_FILENAME
+    ).read_bytes() == new_source.read_bytes()
+
+
+@pytest.mark.parametrize("old_url", [OLD_LOCAL_URL, OLD_STATIC_URL])
+async def test_upgrade_preserves_resource_id_and_icon_cache(
+    hass, www, resources, old_url
+):
+    previous = await resources.async_create_item(
+        {"url": f"{old_url}?v=old#card", CONF_RESOURCE_TYPE_WS: "module"}
     )
-    hass.data[LOVELACE_DATA] = SimpleNamespace(resources=resources)
+    icons = www / "trafikinfo_se" / "icons"
+    icons.mkdir(parents=True)
+    cached_icon = icons / "roadAccident.png"
+    cached_icon.write_bytes(b"existing icon")
+    root_card = www / CARD_FILENAME
+    root_card.write_bytes(b"manually installed card")
 
-    async def _fake_cache_key(_hass):
-        return "0.0.0-456"
+    assert await async_setup(hass, {})
 
-    monkeypatch.setattr(frontend, "_cache_key_for_dev", _fake_cache_key)
-
-    ok = await frontend._async_ensure_card_resource(hass)
-
-    assert ok is True
-    assert resources.update_calls == 1
-    assert resources.async_items()[0]["url"] == f"{CARD_LEGACY_BASE_URL}?v=0.0.0-456"
+    (card,) = resources.async_items()
+    assert card["id"] == previous["id"]
+    assert_card_resource(card)
+    assert cached_icon.read_bytes() == b"existing icon"
+    assert root_card.read_bytes() == b"manually installed card"
+    assert (icons.parent / CARD_FILENAME).read_bytes() == BUNDLED_CARD.read_bytes()
 
 
-@pytest.mark.asyncio
-async def test_ensure_resource_prefers_existing_local_over_canonical(
-    hass, monkeypatch
-) -> None:
-    resources = _FakeResources(
-        [
-            {CONF_ID: "local", CONF_TYPE: "module", "url": CARD_LEGACY_BASE_URL},
-            {CONF_ID: "canonical", CONF_TYPE: "module", "url": CARD_CANONICAL_BASE_URL},
-        ]
+async def test_setup_keeps_new_resource_and_removes_only_known_duplicates(
+    hass, resources
+):
+    unrelated = await resources.async_create_item(
+        {"url": f"/local/custom/{CARD_FILENAME}?v=abc", CONF_RESOURCE_TYPE_WS: "module"}
     )
-    hass.data[LOVELACE_DATA] = SimpleNamespace(resources=resources)
-
-    async def _fake_cache_key(_hass):
-        return "0.0.0-789"
-
-    monkeypatch.setattr(frontend, "_cache_key_for_dev", _fake_cache_key)
-
-    ok = await frontend._async_ensure_card_resource(hass)
-
-    assert ok is True
-    assert resources.update_calls == 1
-    items = {item[CONF_ID]: item for item in resources.async_items()}
-    assert items["local"]["url"] == f"{CARD_LEGACY_BASE_URL}?v=0.0.0-789"
-    assert items["canonical"]["url"] == CARD_CANONICAL_BASE_URL
-
-
-@pytest.mark.asyncio
-async def test_ensure_resource_is_idempotent(hass, monkeypatch) -> None:
-    resources = _FakeResources(
-        [
-            {
-                CONF_ID: "abc",
-                CONF_TYPE: "module",
-                "url": f"{CARD_LEGACY_BASE_URL}?v=stable",
-            }
-        ]
+    for url in (OLD_STATIC_URL, OLD_LOCAL_URL):
+        await resources.async_create_item({"url": url, CONF_RESOURCE_TYPE_WS: "module"})
+    preferred = await resources.async_create_item(
+        {"url": f"{CARD_URL}?v=old", CONF_RESOURCE_TYPE_WS: "module"}
     )
-    hass.data[LOVELACE_DATA] = SimpleNamespace(resources=resources)
 
-    async def _fake_cache_key(_hass):
-        return "stable"
+    assert await async_setup(hass, {})
 
-    monkeypatch.setattr(frontend, "_cache_key_for_dev", _fake_cache_key)
-
-    ok = await frontend._async_ensure_card_resource(hass)
-
-    assert ok is True
-    assert resources.create_calls == 0
-    assert resources.update_calls == 0
+    items = {item["id"]: item for item in resources.async_items()}
+    assert items.keys() == {unrelated["id"], preferred["id"]}
+    assert items[unrelated["id"]] == unrelated
+    assert_card_resource(items[preferred["id"]])
 
 
-@pytest.mark.asyncio
-async def test_ensure_resource_migrates_canonical_to_local(hass, monkeypatch) -> None:
-    resources = _FakeResources(
-        [
-            {
-                CONF_ID: "canonical",
-                CONF_TYPE: "module",
-                "url": f"{CARD_CANONICAL_BASE_URL}?v=old",
-            }
-        ]
+async def test_failed_install_keeps_old_resource_until_retry(hass, www, resources):
+    previous = await resources.async_create_item(
+        {"url": f"{OLD_LOCAL_URL}?v=old", CONF_RESOURCE_TYPE_WS: "module"}
     )
-    hass.data[LOVELACE_DATA] = SimpleNamespace(resources=resources)
+    blocked_card = www / "trafikinfo_se" / CARD_FILENAME
+    blocked_card.mkdir(parents=True)
+    root_card = www / CARD_FILENAME
+    root_card.write_bytes(b"old working card")
 
-    async def _fake_cache_key(_hass):
-        return "0.0.0-999"
+    assert await async_setup(hass, {})
+    assert resources.async_items() == [previous]
+    assert root_card.read_bytes() == b"old working card"
 
-    monkeypatch.setattr(frontend, "_cache_key_for_dev", _fake_cache_key)
-
-    ok = await frontend._async_ensure_card_resource(hass)
-
-    assert ok is True
-    assert resources.update_calls == 1
-    assert resources.async_items()[0]["url"] == f"{CARD_LEGACY_BASE_URL}?v=0.0.0-999"
-
-
-@pytest.mark.asyncio
-async def test_ensure_resource_falls_back_without_lovelace(hass, monkeypatch) -> None:
-    async def _fake_cache_key(_hass):
-        return "fallback"
-
-    monkeypatch.setattr(frontend, "_cache_key_for_dev", _fake_cache_key)
-
-    ok = await frontend._async_ensure_card_resource(hass)
-
-    assert ok is False
+    blocked_card.rmdir()
+    assert await async_setup(hass, {})
+    assert blocked_card.read_bytes() == BUNDLED_CARD.read_bytes()
+    (card,) = resources.async_items()
+    assert previous["id"] == card["id"]
+    assert_card_resource(card)
 
 
-@pytest.mark.asyncio
-async def test_setup_frontend_refreshes_card_after_integration_reload(
-    hass, monkeypatch
-) -> None:
-    hass.data[FRONTEND_DATA_KEY] = {"setup_done": True}
-    calls: list[str] = []
+async def test_late_lovelace_setup_registers_one_resource(hass, www):
+    assert await async_setup(hass, {})
+    assert (www / "trafikinfo_se" / CARD_FILENAME).is_file()
 
-    async def _fake_cache_key(_hass):
-        return "0.0.0-new"
+    collection = ResourceStorageCollection(hass, LovelaceStorage(hass, None))
+    hass.data[LOVELACE_DATA] = SimpleNamespace(resources=collection)
+    for component in ("lovelace", "frontend"):
+        hass.bus.async_fire(EVENT_COMPONENT_LOADED, {"component": component})
+    await hass.async_block_till_done()
 
-    async def _fake_sync(_hass):
-        calls.append("sync")
+    (item,) = collection.async_items()
+    assert_card_resource(item)
 
-    async def _fake_ensure(_hass):
-        calls.append("resource")
-        return True
 
-    monkeypatch.setattr(frontend, "_cache_key_for_dev", _fake_cache_key)
-    monkeypatch.setattr(frontend, "_async_sync_card_to_local_www", _fake_sync)
-    monkeypatch.setattr(frontend, "_async_ensure_card_resource", _fake_ensure)
+async def test_yaml_resources_remain_user_managed(hass, www):
+    item = {"url": OLD_LOCAL_URL, "type": "module"}
+    collection = ResourceYAMLCollection([dict(item)])
+    hass.data[LOVELACE_DATA] = SimpleNamespace(resources=collection)
 
-    await frontend.async_setup_frontend(hass)
+    assert await async_setup(hass, {})
 
-    assert calls == ["sync", "resource"]
-    assert hass.data[FRONTEND_DATA_KEY]["cache_key"] == "0.0.0-new"
+    assert collection.async_items() == [item]
+    assert (
+        www / "trafikinfo_se" / CARD_FILENAME
+    ).read_bytes() == BUNDLED_CARD.read_bytes()
 
 
 def test_bundled_card_registers_route_card() -> None:
-    card_path = Path(frontend._card_file_path())
-    card_text = card_path.read_text(encoding="utf-8")
+    card_text = BUNDLED_CARD.read_text(encoding="utf-8")
 
     assert "trafikinfo-se-route-card" in card_text
     assert "trafikinfo-se-route-card-editor" in card_text
 
 
 def test_bundled_card_uses_policy_compliant_osm_tiles() -> None:
-    card_path = Path(frontend._card_file_path())
-    card_text = card_path.read_text(encoding="utf-8")
+    card_text = BUNDLED_CARD.read_text(encoding="utf-8")
 
     assert "https://tile.openstreetmap.org/{z}/{x}/{y}.png" in card_text
     assert "{s}.tile.openstreetmap.org" not in card_text
@@ -233,8 +189,7 @@ def test_bundled_card_uses_policy_compliant_osm_tiles() -> None:
 
 
 def test_bundled_card_validates_custom_tile_provider_config() -> None:
-    card_path = Path(frontend._card_file_path())
-    card_text = card_path.read_text(encoding="utf-8")
+    card_text = BUNDLED_CARD.read_text(encoding="utf-8")
 
     assert "Custom map tile URL must include {z}, {x}, and {y}." in card_text
     assert "Custom map tile URL must use HTTPS or be same-origin." in card_text
@@ -244,8 +199,7 @@ def test_bundled_card_validates_custom_tile_provider_config() -> None:
 
 
 def test_bundled_card_editors_expose_tile_provider_fields() -> None:
-    card_path = Path(frontend._card_file_path())
-    card_text = card_path.read_text(encoding="utf-8")
+    card_text = BUNDLED_CARD.read_text(encoding="utf-8")
 
     assert card_text.count("name: 'map_tile_url'") == 3
     assert card_text.count("name: 'map_tile_attribution'") == 3
@@ -253,8 +207,7 @@ def test_bundled_card_editors_expose_tile_provider_fields() -> None:
 
 
 def test_bundled_card_editor_documents_road_filter_matching() -> None:
-    card_path = Path(frontend._card_file_path())
-    card_text = card_path.read_text(encoding="utf-8")
+    card_text = BUNDLED_CARD.read_text(encoding="utf-8")
 
     label = (
         "Filter roads (exact numbers/names; 71* for prefixes; "

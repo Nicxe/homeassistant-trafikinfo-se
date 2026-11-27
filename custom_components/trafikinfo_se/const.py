@@ -19,9 +19,12 @@ ENTRY_KIND_TRAVEL_TIME_ROUTE = "travel_time_route"
 # Frontend card resource handling
 CARD_FILENAME = "trafikinfo-se-alert-card.js"
 CARD_WWW_DIR = "www"
-CARD_STATIC_BASE_PATH = f"/{DOMAIN}-static"
-CARD_CANONICAL_BASE_URL = f"{CARD_STATIC_BASE_PATH}/{CARD_FILENAME}"
-CARD_LEGACY_BASE_URL = f"/local/{CARD_FILENAME}"
+CARD_BASE_URL = f"/local/{DOMAIN}/{CARD_FILENAME}"
+CARD_RESOURCE_URLS = (
+    CARD_BASE_URL,
+    f"/local/{CARD_FILENAME}",
+    f"/{DOMAIN}-static/{CARD_FILENAME}",
+)
 FRONTEND_DATA_KEY = f"{DOMAIN}_frontend"
 FRONTEND_DATA_COMPONENT_LISTENER = f"{DOMAIN}_component_listener"
 
@@ -98,7 +101,7 @@ TRAFIKVERKET_ICON_V2_URL_PREFIX = (
 )
 
 # Local icon cache (served by HA at /local/*)
-ICON_CACHE_DIR = "trafikinfo_se/icons"
+ICON_CACHE_DIR = f"{DOMAIN}/icons"
 
 # Dismissed events (user acknowledgment)
 CONF_DISMISSED_EVENTS = "dismissed_events"
@@ -122,7 +125,7 @@ KNOWN_TRAVEL_TIME_ROUTE_STATUSES: list[str] = [
 ]
 
 
-def get_user_agent(hass: "HomeAssistant | None" = None) -> str:
+def get_user_agent(hass: HomeAssistant | None = None) -> str:
     """Generate User-Agent header for HTTP requests.
 
     Format: HomeAssistant/{ha_version} trafikinfo_se/{integration_version}
