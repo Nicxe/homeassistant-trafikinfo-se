@@ -123,7 +123,8 @@ def test_discovery_request_uses_current_model_and_server_side_near_filter() -> N
 
     assert 'objecttype="TrafficFlow"' in request
     assert 'namespace="Road.TrafficInfo"' in request
-    assert 'schemaversion="1.5"' in request
+    assert 'schemaversion="1.6"' in request
+    assert "BaselineTraffic" not in request
     assert '<EQ name="VehicleType" value="anyVehicle" />' in request
     assert '<NEAR name="Geometry.WGS84"' in request
     assert 'maxdistance="25000"' in request
@@ -270,7 +271,9 @@ async def test_config_flow_maps_discovery_errors_to_actionable_messages(
 
 
 @pytest.mark.asyncio
-async def test_config_flow_reports_empty_discovery_separately(hass, monkeypatch) -> None:
+async def test_config_flow_reports_empty_discovery_separately(
+    hass, monkeypatch
+) -> None:
     async def _empty_result(*_args, **_kwargs):
         return []
 
@@ -319,13 +322,15 @@ def test_snapshot_attributes_keep_raw_and_effective_quality_separate() -> None:
 @pytest.mark.asyncio
 async def test_coordinator_fetches_only_selected_site_ids(hass, monkeypatch) -> None:
     async def _fake_post_xml(_hass, payload: str) -> str:
+        assert 'schemaversion="1.6"' in payload
+        assert "<INCLUDE>BaselineTraffic</INCLUDE>" in payload
         assert '<IN name="SiteId" value="1001, 1002, 1003" />' in payload
         assert "<NEAR" not in payload
         assert '<EQ name="CountyNo"' not in payload
         current_time = datetime.now(UTC).isoformat()
-        return TRAFFIC_FLOW_XML.replace(
-            "2026-08-26T10:01:00Z", current_time
-        ).replace("2026-08-26T10:01:05Z", current_time)
+        return TRAFFIC_FLOW_XML.replace("2026-08-26T10:01:00Z", current_time).replace(
+            "2026-08-26T10:01:05Z", current_time
+        )
 
     monkeypatch.setattr(traffic_flow, "_async_post_xml", _fake_post_xml)
 
@@ -336,6 +341,8 @@ async def test_coordinator_fetches_only_selected_site_ids(hass, monkeypatch) -> 
     assert coordinator.data is not None
     assert coordinator.data.total_flow_rate == 900
     assert coordinator.data.weighted_average_speed == pytest.approx(70.0)
+    assert coordinator.data.comparison.status == "missing_reference"
+    assert coordinator.data.comparison.expected_detector_count == 3
 
 
 @pytest.mark.asyncio

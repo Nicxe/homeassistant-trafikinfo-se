@@ -352,6 +352,18 @@
           "stale": "För gammal",
           "unknown": "Okänd"
         }
+      },
+      "traffic_flow_reference": {
+        "name": "Referensflöde"
+      },
+      "traffic_flow_speed_reference": {
+        "name": "Referenshastighet"
+      },
+      "traffic_flow_deviation": {
+        "name": "Flödesavvikelse"
+      },
+      "traffic_flow_speed_deviation": {
+        "name": "Hastighetsavvikelse"
       }
     }
   }
