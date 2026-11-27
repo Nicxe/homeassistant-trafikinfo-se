@@ -72,13 +72,9 @@ To add the repository manually in HACS:
 
 ### Bundled dashboard cards
 
-The dashboard cards require no separate HACS installation. When the integration starts, it:
+The integration installs the bundled dashboard cards at `config/www/trafikinfo_se/trafikinfo-se-alert-card.js`. Traffic icons are cached in the same folder's `icons/` subdirectory.
 
-- copies the bundled JavaScript file to `config/www/trafikinfo-se-alert-card.js`
-- creates or updates the Lovelace module resource at `/local/trafikinfo-se-alert-card.js?v=...`
-- changes the resource version after an update so the browser loads the new file
-
-Reload the browser once after installing or updating the integration.
+If you manage dashboard resources in the UI, the integration registers the JavaScript module and updates its URL when the cards change. Reload the browser after installing or updating. If you manage resources in YAML, use `/local/trafikinfo_se/trafikinfo-se-alert-card.js` as the module URL. [Migration guide](./MIGRATION.md)
 
 ## Set up the integration
 
@@ -426,7 +422,7 @@ The visual incident cards can call these actions for you. Manual calls use the `
 Normally the integration manages the resource automatically. If the card module is still missing:
 
 1. Open **Settings > Dashboards > Resources**
-2. Add `/local/trafikinfo-se-alert-card.js`
+2. Update the existing Trafikinfo resource to `/local/trafikinfo_se/trafikinfo-se-alert-card.js`, or add it if missing
 3. Select **JavaScript Module**
 4. Reload the browser
 
